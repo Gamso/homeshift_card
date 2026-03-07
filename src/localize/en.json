@@ -1,0 +1,23 @@
+{
+  "card": {
+    "title": "Thermostat",
+    "entity_not_found": "Entity not found: {entity}",
+    "off": "Off",
+    "next_scan": "Next scan",
+    "in": "in",
+    "today": "Today",
+    "tomorrow": "Tomorrow",
+    "past": "past"
+  },
+  "thermostat": {
+    "heating": "Heating",
+    "cooling": "Cooling",
+    "ventilation": "Ventilation"
+  },
+  "editor": {
+    "name": "Name",
+    "day_mode_entity": "Day Mode Entity",
+    "hermostat_mode_tentity": "Thermostat Mode Entity",
+    "show_title": "Show title"
+  }
+}

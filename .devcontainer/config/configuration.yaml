@@ -1,0 +1,152 @@
+homeassistant:
+  name: Day Mode DevContainer
+  latitude: 48.8566
+  longitude: 2.3522
+  elevation: 0
+  unit_system: metric
+  country: FR
+  time_zone: Europe/Paris
+
+# Charger la config par défaut SAUF conversation
+default_config:
+
+# Désactiver explicitement conversation
+conversation: null
+
+# Enable development mode
+logger:
+  default: info
+  logs:
+    homeassistant.components.lovelace: debug
+
+# User interface
+# Resources are registered via .storage/lovelace_resources (storage mode ignores configuration.yaml resources)
+lovelace:
+  mode: storage
+
+# Test entities simulating the HomeShift integration entities.
+# The template selects expose select.homeshift_day_mode and select.homeshift_thermostat_mode
+# (same domain as the real integration), backed by input_select helpers for state storage.
+input_select:
+  homeshift_day_mode_backing:
+    name: HomeShift Day Mode (backing)
+    options:
+      - Maison
+      - Travail
+      - Télétravail
+      - Absence
+  homeshift_thermostat_mode_backing:
+    name: HomeShift Thermostat Mode (backing)
+    options:
+      - Eteint
+      - Chauffage
+      - Climatisation
+      - Ventilation
+
+template:
+  - select:
+      - name: "homeshift_day_mode"
+        unique_id: homeshift_day_mode
+        state: "{{ states('input_select.homeshift_day_mode_backing') }}"
+        options: "{{ state_attr('input_select.homeshift_day_mode_backing', 'options') }}"
+        select_option:
+          service: input_select.select_option
+          data:
+            entity_id: input_select.homeshift_day_mode_backing
+            option: "{{ option }}"
+      - name: "homeshift_thermostat_mode"
+        unique_id: homeshift_thermostat_mode
+        state: "{{ states('input_select.homeshift_thermostat_mode_backing') }}"
+        options: "{{ state_attr('input_select.homeshift_thermostat_mode_backing', 'options') }}"
+        select_option:
+          service: input_select.select_option
+          data:
+            entity_id: input_select.homeshift_thermostat_mode_backing
+            option: "{{ option }}"
+  - number:
+      - name: "homeshift_override_duration"
+        unique_id: homeshift_override_duration
+        state: "{{ states('input_number.homeshift_override_duration_backing') | float(0) }}"
+        min: 0
+        max: 720
+        step: 5
+        unit_of_measurement: min
+        icon: mdi:timer-outline
+        set_value:
+          service: input_number.set_value
+          data:
+            entity_id: input_number.homeshift_override_duration_backing
+            value: "{{ value }}"
+      - name: "homeshift_early_switch"
+        unique_id: homeshift_early_switch
+        state: "{{ states('input_number.homeshift_early_switch_backing') | float(0) }}"
+        min: 0
+        max: 480
+        step: 5
+        unit_of_measurement: min
+        icon: mdi:clock-fast
+        set_value:
+          service: input_number.set_value
+          data:
+            entity_id: input_number.homeshift_early_switch_backing
+            value: "{{ value }}"
+  - sensor:
+      - name: "homeshift_next_scan"
+        unique_id: homeshift_next_scan
+        state: "{{ (now() + timedelta(minutes=47)).isoformat() }}"
+        device_class: timestamp
+      - name: "homeshift_next_mode"
+        unique_id: homeshift_next_mode
+        state: "{{ states('input_text.homeshift_next_mode_backing') }}"
+      - name: "homeshift_next_mode_at"
+        unique_id: homeshift_next_mode_at
+        state: "{{ (now() + timedelta(hours=2, minutes=15)).isoformat() }}"
+        device_class: timestamp
+
+# Simulates number.homeshift_override_duration and number.homeshift_early_switch
+# from the HomeShift integration.
+input_number:
+  homeshift_override_duration_backing:
+    name: HomeShift Override Duration (backing)
+    min: 0
+    max: 720
+    step: 5
+    unit_of_measurement: min
+    icon: mdi:timer-outline
+  homeshift_early_switch_backing:
+    name: HomeShift Early Switch (backing)
+    min: 0
+    max: 480
+    step: 5
+    unit_of_measurement: min
+    icon: mdi:clock-fast
+
+# Simulates sensor.homeshift_next_mode (text) from the HomeShift integration.
+input_text:
+  homeshift_next_mode_backing:
+    name: HomeShift Next Mode (backing)
+    initial: "Télétravail"
+
+# Scheduler integration
+# NOTE: The scheduler integration must be added via the Home Assistant UI first!
+# Steps to add:
+#   1. Go to Settings → Devices & Services
+#   2. Click "+ Add Integration"
+#   3. Search for "Scheduler" and add it
+#
+# After adding the integration, you can customize it by uncommenting and editing below:
+# scheduler:
+#   customize:
+#     light:
+#       icon: mdi:lightbulb
+#     switch:
+#       icon: mdi:power-plug
+
+# Test entities for scheduler
+input_boolean:
+  test_switch:
+    name: Test Switch
+    icon: mdi:power-plug
+  test_light:
+    name: Test Light
+    icon: mdi:lightbulb

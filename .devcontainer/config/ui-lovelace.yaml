@@ -1,0 +1,31 @@
+title: HomeShift Dashboard
+views:
+  - title: Home
+    path: home
+    icon: mdi:home
+    cards:
+      - type: custom:homeshift-card
+        name: Thermostat
+        day_mode_entity: input_select.homeshift_day_mode
+        hermostat_mode_tentity: input_select.homeshift_thermostat_mode
+        show_title: true
+
+      - type: entities
+        title: Entités HomeShift
+        entities:
+          - entity: input_select.homeshift_day_mode
+          - entity: input_select.homeshift_thermostat_mode
+          - entity: input_number.homeshift_override_duration
+
+  - title: Scheduler
+    path: scheduler
+    icon: mdi:calendar-clock
+    cards:
+      - type: custom:scheduler-card
+        title: Schedules
+
+      - type: entities
+        title: Test Entities
+        entities:
+          - entity: input_boolean.test_switch
+          - entity: input_boolean.test_light
