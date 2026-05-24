@@ -3,6 +3,8 @@
   "build": {
     "dockerfile": "Dockerfile"
   },
+  // Ajout des DNS pour corriger l'erreur de connexion Copilot (getaddrinfo EAI_AGAIN)
+  "runArgs": ["--dns=8.8.8.8", "--dns=1.1.1.1"],
   "appPort": ["8123:8123"],
   "forwardPorts": [8123],
   "portsAttributes": {

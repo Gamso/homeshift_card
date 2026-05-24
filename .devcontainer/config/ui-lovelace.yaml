@@ -1,4 +1,7 @@
 title: HomeShift Dashboard
+# NOTE: Ce fichier est une référence documentaire uniquement.
+# En mode "storage", Home Assistant utilise .storage/lovelace comme configuration active.
+# Pour modifier le tableau de bord, utiliser l'éditeur HA ou éditer .storage/lovelace directement.
 views:
   - title: Home
     path: home
@@ -6,16 +9,25 @@ views:
     cards:
       - type: custom:homeshift-card
         name: Thermostat
-        day_mode_entity: input_select.homeshift_day_mode
-        hermostat_mode_tentity: input_select.homeshift_thermostat_mode
+        day_mode_entity: select.homeshift_day_mode
+        thermostat_mode_entity: select.homeshift_thermostat_mode
+        override_duration_entity: number.homeshift_override_duration
+        early_switch_entity: number.homeshift_early_switch
+        next_mode_entity: sensor.homeshift_next_mode
+        next_mode_at_entity: sensor.homeshift_next_mode_at
+        heat_protection_entity: binary_sensor.homeshift_is_heat_protection_active
         show_title: true
 
       - type: entities
         title: Entités HomeShift
         entities:
-          - entity: input_select.homeshift_day_mode
-          - entity: input_select.homeshift_thermostat_mode
-          - entity: input_number.homeshift_override_duration
+          - entity: select.homeshift_day_mode
+          - entity: select.homeshift_thermostat_mode
+          - entity: number.homeshift_override_duration
+          - entity: number.homeshift_early_switch
+          - entity: sensor.homeshift_next_mode
+          - entity: sensor.homeshift_next_mode_at
+          - entity: binary_sensor.homeshift_is_heat_protection_active
 
   - title: Scheduler
     path: scheduler
