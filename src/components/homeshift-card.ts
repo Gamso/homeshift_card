@@ -12,6 +12,7 @@ interface HomeShiftCardConfig {
   early_switch_entity?: string;
   next_mode_entity?: string;
   next_mode_at_entity?: string;
+  heat_protection_entity?: string;
   show_title?: boolean;
 }
 
@@ -71,6 +72,8 @@ class HomeShiftCard extends LitElement {
       early_switch_entity: "number.homeshift_early_switch",
       next_mode_entity: "sensor.homeshift_next_mode",
       next_mode_at_entity: "sensor.homeshift_next_mode_at",
+      heat_protection_entity:
+        "binary_sensor.homeshift_is_heat_protection_active",
       show_title: true,
     };
   }
@@ -95,6 +98,9 @@ class HomeShiftCard extends LitElement {
       next_mode_entity: config.next_mode_entity ?? "sensor.homeshift_next_mode",
       next_mode_at_entity:
         config.next_mode_at_entity ?? "sensor.homeshift_next_mode_at",
+      heat_protection_entity:
+        config.heat_protection_entity ??
+        "binary_sensor.homeshift_is_heat_protection_active",
       show_title: config.show_title !== false,
     };
   }
@@ -116,6 +122,7 @@ class HomeShiftCard extends LitElement {
         this._config?.early_switch_entity,
         this._config?.next_mode_entity,
         this._config?.next_mode_at_entity,
+        this._config?.heat_protection_entity,
       ].filter(Boolean) as string[];
       return watchedEntities.some(
         (id) => oldHass.states[id] !== this.hass.states[id],
@@ -208,7 +215,7 @@ class HomeShiftCard extends LitElement {
     return `${dt.toLocaleDateString([], { month: "short", day: "numeric" })} ${timeStr}`;
   }
 
-  private _renderMain(thermo: any, day: any) {
+  private _renderMain(thermo: any, day: any, heatProtectionActive: boolean) {
     // Day mode options from option_map attribute (HomeShift integration ≥ 1.1.0).
     // Falls back to options list if option_map is not yet available.
     const dayModeMap: Record<string, string> = day.attributes?.option_map ?? {};
@@ -271,6 +278,15 @@ class HomeShiftCard extends LitElement {
 
     return html`
       <div class="thermo-section">
+        ${heatProtectionActive
+          ? html`<div
+              class="heat-protection-badge"
+              title="${localize(this.hass, "card.heat_protection_active") ||
+              "Heat protection active"}"
+            >
+              <ha-icon icon="mdi:window-shutter"></ha-icon>
+            </div>`
+          : nothing}
         <homeshift-circular-slider
           .hass=${this.hass}
           .entityId=${thermo.entity_id}
@@ -404,9 +420,14 @@ class HomeShiftCard extends LitElement {
       },
     };
 
+    const heatProtectionActive =
+      this.getEntityState(this._config.heat_protection_entity)?.state === "on";
+
     return html`
       <ha-card .header=${this._config.show_title ? title : undefined}>
-        <div class="container">${this._renderMain(thermo, day)}</div>
+        <div class="container">
+          ${this._renderMain(thermo, day, heatProtectionActive)}
+        </div>
       </ha-card>
     `;
   }
@@ -600,6 +621,28 @@ class HomeShiftCard extends LitElement {
     .error {
       color: var(--error-color);
       padding: 16px;
+    }
+
+    .heat-protection-badge {
+      position: absolute;
+      right: -4px;
+      top: 4%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: var(--error-color, #e7973c);
+      color: var(--text-primary-color, #fff);
+      z-index: 3;
+      pointer-events: none;
+      animation: fadeIn 0.3s ease;
+    }
+
+    .heat-protection-badge ha-icon {
+      color: var(--text-primary-color, #fff);
+      --mdi-icon-size: 20px;
     }
   `;
 }

@@ -18,7 +18,7 @@ Ce projet inclut une configuration DevContainer pour développer et tester une c
    npm install
    npm run build
    ```
-5. Accéder à Home Assistant: http://localhost:812
+5. Accéder à Home Assistant: http://localhost:8123
 
 ## Ressource de la carte
 

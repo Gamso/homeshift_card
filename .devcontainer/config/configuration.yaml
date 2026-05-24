@@ -102,6 +102,11 @@ template:
         unique_id: homeshift_next_mode_at
         state: "{{ (now() + timedelta(hours=2, minutes=15)).isoformat() }}"
         device_class: timestamp
+  - binary_sensor:
+      - name: "homeshift_is_heat_protection_active"
+        unique_id: homeshift_is_heat_protection_active
+        state: "{{ states('input_boolean.homeshift_heat_protection_backing') == 'on' }}"
+        device_class: heat
 
 # Simulates number.homeshift_override_duration and number.homeshift_early_switch
 # from the HomeShift integration.
@@ -150,3 +155,6 @@ input_boolean:
   test_light:
     name: Test Light
     icon: mdi:lightbulb
+  homeshift_heat_protection_backing:
+    name: HomeShift Heat Protection (backing)
+    icon: mdi:fire-alert
