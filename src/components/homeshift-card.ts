@@ -73,7 +73,7 @@ class HomeShiftCard extends LitElement {
       next_mode_entity: "sensor.homeshift_next_mode",
       next_mode_at_entity: "sensor.homeshift_next_mode_at",
       heat_protection_entity:
-        "binary_sensor.homeshift_is_heat_protection_active",
+        "binary_sensor.homeshift_cover_heat_active",
       show_title: true,
     };
   }
@@ -100,7 +100,7 @@ class HomeShiftCard extends LitElement {
         config.next_mode_at_entity ?? "sensor.homeshift_next_mode_at",
       heat_protection_entity:
         config.heat_protection_entity ??
-        "binary_sensor.homeshift_is_heat_protection_active",
+        "binary_sensor.homeshift_cover_heat_active",
       show_title: config.show_title !== false,
     };
   }

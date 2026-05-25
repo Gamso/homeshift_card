@@ -103,8 +103,8 @@ template:
         state: "{{ (now() + timedelta(hours=2, minutes=15)).isoformat() }}"
         device_class: timestamp
   - binary_sensor:
-      - name: "homeshift_is_heat_protection_active"
-        unique_id: homeshift_is_heat_protection_active
+      - name: "homeshift_cover_heat_active"
+        unique_id: homeshift_cover_heat_active
         state: "{{ states('input_boolean.homeshift_heat_protection_backing') == 'on' }}"
         device_class: heat
 
