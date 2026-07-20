@@ -102,6 +102,14 @@ template:
         unique_id: homeshift_next_mode_at
         state: "{{ (now() + timedelta(hours=2, minutes=15)).isoformat() }}"
         device_class: timestamp
+      - name: "homeshift_cover_open_time"
+        unique_id: homeshift_cover_open_time
+        state: "{{ states('input_text.homeshift_cover_open_time_backing') }}"
+        icon: mdi:roller-shade
+      - name: "homeshift_cover_close_time"
+        unique_id: homeshift_cover_close_time
+        state: "{{ states('input_text.homeshift_cover_close_time_backing') }}"
+        icon: mdi:roller-shade-closed
   - binary_sensor:
       - name: "homeshift_cover_heat_active"
         unique_id: homeshift_cover_heat_active
@@ -131,6 +139,14 @@ input_text:
   homeshift_next_mode_backing:
     name: HomeShift Next Mode (backing)
     initial: "Télétravail"
+  homeshift_cover_open_time_backing:
+    name: HomeShift Cover Open Time (backing)
+    initial: "08:30"
+    icon: mdi:roller-shade
+  homeshift_cover_close_time_backing:
+    name: HomeShift Cover Close Time (backing)
+    initial: "21:15"
+    icon: mdi:roller-shade-closed
 
 # Scheduler integration
 # NOTE: The scheduler integration must be added via the Home Assistant UI first!
@@ -158,3 +174,24 @@ input_boolean:
   homeshift_heat_protection_backing:
     name: HomeShift Heat Protection (backing)
     icon: mdi:fire-alert
+  homeshift_cover_state_backing:
+    name: HomeShift Cover State (backing)
+    icon: mdi:window-shutter
+
+# Test cover entity simulating the HomeShift daily cover group
+# (select.cover_entity in the card triggers cover.open_cover/close_cover on this entity).
+cover:
+  - platform: template
+    covers:
+      homeshift_daily_covers:
+        friendly_name: "HomeShift Daily Covers"
+        device_class: shutter
+        value_template: "{{ 'open' if is_state('input_boolean.homeshift_cover_state_backing', 'on') else 'closed' }}"
+        open_cover:
+          service: input_boolean.turn_on
+          target:
+            entity_id: input_boolean.homeshift_cover_state_backing
+        close_cover:
+          service: input_boolean.turn_off
+          target:
+            entity_id: input_boolean.homeshift_cover_state_backing

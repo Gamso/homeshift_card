@@ -8,7 +8,11 @@
     "today": "Auj.",
     "tomorrow": "Dem.",
     "past": "passé",
-    "heat_protection_active": "Protection thermique active"
+    "heat_protection_active": "Protection thermique active",
+    "cover_open_time": "Heure d'ouverture des volets",
+    "cover_close_time": "Heure de fermeture des volets",
+    "cover_open_action": "Ouvrir maintenant",
+    "cover_close_action": "Fermer maintenant"
   },
   "thermostat": {
     "heating": "Chauffage",
@@ -19,6 +23,9 @@
     "name": "Nom",
     "day_mode_entity": "Entité mode jour",
     "hermostat_mode_tentity": "Entité mode thermostat",
+    "cover_open_time_entity": "Entité heure d'ouverture des volets",
+    "cover_close_time_entity": "Entité heure de fermeture des volets",
+    "cover_entity": "Entité volet (ouverture/fermeture manuelle)",
     "show_title": "Afficher le titre"
   }
 }
