@@ -16,6 +16,9 @@ views:
         next_mode_entity: sensor.homeshift_next_mode
         next_mode_at_entity: sensor.homeshift_next_mode_at
         heat_protection_entity: binary_sensor.homeshift_cover_heat_active
+        cover_open_time_entity: sensor.homeshift_cover_open_time
+        cover_close_time_entity: sensor.homeshift_cover_close_time
+        cover_entity: cover.homeshift_daily_covers
         show_title: true
 
       - type: entities

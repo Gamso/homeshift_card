@@ -8,7 +8,11 @@
     "today": "Today",
     "tomorrow": "Tomorrow",
     "past": "past",
-    "heat_protection_active": "Heat protection active"
+    "heat_protection_active": "Heat protection active",
+    "cover_open_time": "Cover opening time",
+    "cover_close_time": "Cover closing time",
+    "cover_open_action": "Open now",
+    "cover_close_action": "Close now"
   },
   "thermostat": {
     "heating": "Heating",
@@ -19,6 +23,9 @@
     "name": "Name",
     "day_mode_entity": "Day Mode Entity",
     "hermostat_mode_tentity": "Thermostat Mode Entity",
+    "cover_open_time_entity": "Cover Open Time Entity",
+    "cover_close_time_entity": "Cover Close Time Entity",
+    "cover_entity": "Cover Entity (manual open/close)",
     "show_title": "Show title"
   }
 }

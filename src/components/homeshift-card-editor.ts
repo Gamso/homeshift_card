@@ -6,6 +6,9 @@ interface HomeShiftCardConfig {
   name?: string;
   day_mode_entity?: string;
   hermostat_mode_tentity?: string;
+  cover_open_time_entity?: string;
+  cover_close_time_entity?: string;
+  cover_entity?: string;
   show_title?: boolean;
 }
 
@@ -89,6 +92,34 @@ class HomeShiftCardEditor extends LitElement {
           .value=${this._config.hermostat_mode_tentity || ""}
           @value-changed=${(e: CustomEvent) =>
             this._onEntityChanged(e, "hermostat_mode_tentity")}
+          allow-custom-entity
+        ></ha-entity-picker>
+
+        <ha-entity-picker
+          label="${localize(this.hass, "editor.cover_open_time_entity")}"
+          .hass=${this.hass}
+          .value=${this._config.cover_open_time_entity || ""}
+          @value-changed=${(e: CustomEvent) =>
+            this._onEntityChanged(e, "cover_open_time_entity")}
+          allow-custom-entity
+        ></ha-entity-picker>
+
+        <ha-entity-picker
+          label="${localize(this.hass, "editor.cover_close_time_entity")}"
+          .hass=${this.hass}
+          .value=${this._config.cover_close_time_entity || ""}
+          @value-changed=${(e: CustomEvent) =>
+            this._onEntityChanged(e, "cover_close_time_entity")}
+          allow-custom-entity
+        ></ha-entity-picker>
+
+        <ha-entity-picker
+          label="${localize(this.hass, "editor.cover_entity")}"
+          .hass=${this.hass}
+          .value=${this._config.cover_entity || ""}
+          .includeDomains=${["cover"]}
+          @value-changed=${(e: CustomEvent) =>
+            this._onEntityChanged(e, "cover_entity")}
           allow-custom-entity
         ></ha-entity-picker>
 

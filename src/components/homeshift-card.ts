@@ -13,6 +13,9 @@ interface HomeShiftCardConfig {
   next_mode_entity?: string;
   next_mode_at_entity?: string;
   heat_protection_entity?: string;
+  cover_open_time_entity?: string;
+  cover_close_time_entity?: string;
+  cover_entity?: string;
   show_title?: boolean;
 }
 
@@ -74,6 +77,9 @@ class HomeShiftCard extends LitElement {
       next_mode_at_entity: "sensor.homeshift_next_mode_at",
       heat_protection_entity:
         "binary_sensor.homeshift_cover_heat_active",
+      cover_open_time_entity: "sensor.homeshift_cover_open_time",
+      cover_close_time_entity: "sensor.homeshift_cover_close_time",
+      cover_entity: "cover.homeshift_daily_covers",
       show_title: true,
     };
   }
@@ -101,6 +107,11 @@ class HomeShiftCard extends LitElement {
       heat_protection_entity:
         config.heat_protection_entity ??
         "binary_sensor.homeshift_cover_heat_active",
+      cover_open_time_entity:
+        config.cover_open_time_entity ?? "sensor.homeshift_cover_open_time",
+      cover_close_time_entity:
+        config.cover_close_time_entity ?? "sensor.homeshift_cover_close_time",
+      cover_entity: config.cover_entity ?? "",
       show_title: config.show_title !== false,
     };
   }
@@ -123,6 +134,9 @@ class HomeShiftCard extends LitElement {
         this._config?.next_mode_entity,
         this._config?.next_mode_at_entity,
         this._config?.heat_protection_entity,
+        this._config?.cover_open_time_entity,
+        this._config?.cover_close_time_entity,
+        this._config?.cover_entity,
       ].filter(Boolean) as string[];
       return watchedEntities.some(
         (id) => oldHass.states[id] !== this.hass.states[id],
@@ -159,6 +173,12 @@ class HomeShiftCard extends LitElement {
       entity_id: entityId,
       option: offOption,
     });
+  }
+
+  private onCoverAction(action: "open_cover" | "close_cover") {
+    const entityId = this._config.cover_entity;
+    if (!entityId) return;
+    this.hass.callService("cover", action, { entity_id: entityId });
   }
 
   private onOverrideDurationSelect(ev: Event) {
@@ -215,7 +235,13 @@ class HomeShiftCard extends LitElement {
     return `${dt.toLocaleDateString([], { month: "short", day: "numeric" })} ${timeStr}`;
   }
 
-  private _renderMain(thermo: any, day: any, heatProtectionActive: boolean) {
+  private _renderMain(
+    thermo: any,
+    day: any,
+    heatProtectionActive: boolean,
+    coverOpenTime?: string,
+    coverCloseTime?: string,
+  ) {
     // Day mode options from option_map attribute (HomeShift integration ≥ 1.1.0).
     // Falls back to options list if option_map is not yet available.
     const dayModeMap: Record<string, string> = day.attributes?.option_map ?? {};
@@ -276,8 +302,47 @@ class HomeShiftCard extends LitElement {
     const hasNextMode =
       nextMode?.state && nextMode.state !== "unknown" && nextMode.state !== "";
 
+    const hasCoverOpenTime =
+      coverOpenTime && coverOpenTime !== "unknown" && coverOpenTime !== "unavailable";
+    const hasCoverCloseTime =
+      coverCloseTime && coverCloseTime !== "unknown" && coverCloseTime !== "unavailable";
+
+    const canControlCover = Boolean(this._config.cover_entity);
+
     return html`
       <div class="thermo-section">
+        ${hasCoverOpenTime || hasCoverCloseTime
+          ? html`<div class="cover-times">
+              ${hasCoverOpenTime
+                ? html`<div
+                    class="cover-time-row ${canControlCover ? "actionable" : ""}"
+                    title="${canControlCover
+                      ? localize(this.hass, "card.cover_open_action") ||
+                        "Open now"
+                      : localize(this.hass, "card.cover_open_time") ||
+                        "Cover opening time"}"
+                    @click=${() => this.onCoverAction("open_cover")}
+                  >
+                    <ha-icon icon="mdi:roller-shade"></ha-icon>
+                    <span>${coverOpenTime}</span>
+                  </div>`
+                : nothing}
+              ${hasCoverCloseTime
+                ? html`<div
+                    class="cover-time-row ${canControlCover ? "actionable" : ""}"
+                    title="${canControlCover
+                      ? localize(this.hass, "card.cover_close_action") ||
+                        "Close now"
+                      : localize(this.hass, "card.cover_close_time") ||
+                        "Cover closing time"}"
+                    @click=${() => this.onCoverAction("close_cover")}
+                  >
+                    <ha-icon icon="mdi:roller-shade-closed"></ha-icon>
+                    <span>${coverCloseTime}</span>
+                  </div>`
+                : nothing}
+            </div>`
+          : nothing}
         ${heatProtectionActive
           ? html`<div
               class="heat-protection-badge"
@@ -422,11 +487,23 @@ class HomeShiftCard extends LitElement {
 
     const heatProtectionActive =
       this.getEntityState(this._config.heat_protection_entity)?.state === "on";
+    const coverOpenTime = this.getEntityState(
+      this._config.cover_open_time_entity,
+    )?.state;
+    const coverCloseTime = this.getEntityState(
+      this._config.cover_close_time_entity,
+    )?.state;
 
     return html`
       <ha-card .header=${this._config.show_title ? title : undefined}>
         <div class="container">
-          ${this._renderMain(thermo, day, heatProtectionActive)}
+          ${this._renderMain(
+            thermo,
+            day,
+            heatProtectionActive,
+            coverOpenTime,
+            coverCloseTime,
+          )}
         </div>
       </ha-card>
     `;
@@ -623,9 +700,52 @@ class HomeShiftCard extends LitElement {
       padding: 16px;
     }
 
+    .cover-times {
+      position: absolute;
+      right: 100%;
+      margin-right: 8px;
+      top: 4%;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      z-index: 2;
+      animation: fadeIn 0.3s ease;
+    }
+
+    .cover-time-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 6px;
+      border-radius: 10px;
+      background: rgba(128, 128, 128, 0.12);
+      border: 1px solid var(--divider-color, rgba(0, 0, 0, 0.1));
+      font-size: 11px;
+      color: var(--secondary-text-color);
+      white-space: nowrap;
+    }
+
+    .cover-time-row.actionable {
+      cursor: pointer;
+      transition:
+        border-color 0.2s ease,
+        background 0.2s ease;
+    }
+
+    .cover-time-row.actionable:hover {
+      border-color: var(--primary-color);
+      background: rgba(128, 128, 128, 0.22);
+    }
+
+    .cover-time-row ha-icon {
+      color: var(--secondary-text-color);
+      --mdi-icon-size: 14px;
+    }
+
     .heat-protection-badge {
       position: absolute;
-      right: -4px;
+      left: 100%;
+      margin-left: 8px;
       top: 4%;
       display: flex;
       align-items: center;
