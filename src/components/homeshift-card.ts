@@ -16,6 +16,7 @@ interface HomeShiftCardConfig {
   cover_open_time_entity?: string;
   cover_close_time_entity?: string;
   cover_entity?: string;
+  covers_left_open_entity?: string;
   show_title?: boolean;
 }
 
@@ -80,6 +81,7 @@ class HomeShiftCard extends LitElement {
       cover_open_time_entity: "sensor.homeshift_cover_open_time",
       cover_close_time_entity: "sensor.homeshift_cover_close_time",
       cover_entity: "cover.homeshift_daily_covers",
+      covers_left_open_entity: "binary_sensor.homeshift_covers_left_open",
       show_title: true,
     };
   }
@@ -112,6 +114,9 @@ class HomeShiftCard extends LitElement {
       cover_close_time_entity:
         config.cover_close_time_entity ?? "sensor.homeshift_cover_close_time",
       cover_entity: config.cover_entity ?? "",
+      covers_left_open_entity:
+        config.covers_left_open_entity ??
+        "binary_sensor.homeshift_covers_left_open",
       show_title: config.show_title !== false,
     };
   }
@@ -137,6 +142,7 @@ class HomeShiftCard extends LitElement {
         this._config?.cover_open_time_entity,
         this._config?.cover_close_time_entity,
         this._config?.cover_entity,
+        this._config?.covers_left_open_entity,
       ].filter(Boolean) as string[];
       return watchedEntities.some(
         (id) => oldHass.states[id] !== this.hass.states[id],
@@ -148,6 +154,17 @@ class HomeShiftCard extends LitElement {
   private getEntityState(entityId?: string) {
     if (!entityId) return undefined;
     return this.hass?.states?.[entityId];
+  }
+
+  /** The covers tonight's close had to leave up, by friendly name. */
+  private getCoversLeftOpen(): string[] {
+    const covers = this.getEntityState(this._config?.covers_left_open_entity)
+      ?.attributes?.covers;
+    if (!Array.isArray(covers)) return [];
+    return covers.map(
+      (id: string) =>
+        this.hass?.states?.[id]?.attributes?.friendly_name ?? id,
+    );
   }
 
   private onSelect(entityId: string, ev: Event) {
@@ -239,6 +256,7 @@ class HomeShiftCard extends LitElement {
     thermo: any,
     day: any,
     heatProtectionActive: boolean,
+    coversLeftOpen: string[],
     coverOpenTime?: string,
     coverCloseTime?: string,
   ) {
@@ -343,13 +361,31 @@ class HomeShiftCard extends LitElement {
                 : nothing}
             </div>`
           : nothing}
-        ${heatProtectionActive
-          ? html`<div
-              class="heat-protection-badge"
-              title="${localize(this.hass, "card.heat_protection_active") ||
-              "Heat protection active"}"
-            >
-              <ha-icon icon="mdi:window-shutter"></ha-icon>
+        ${heatProtectionActive || coversLeftOpen.length > 0
+          ? html`<div class="badge-stack">
+              ${heatProtectionActive
+                ? html`<div
+                    class="badge heat-protection-badge"
+                    title="${localize(
+                      this.hass,
+                      "card.heat_protection_active",
+                    ) || "Heat protection active"}"
+                  >
+                    <ha-icon icon="mdi:window-shutter"></ha-icon>
+                  </div>`
+                : nothing}
+              ${coversLeftOpen.length > 0
+                ? html`<div
+                    class="badge covers-left-open-badge"
+                    title="${localize(
+                      this.hass,
+                      "card.covers_left_open",
+                      { covers: coversLeftOpen.join(", ") },
+                    )}"
+                  >
+                    <ha-icon icon="mdi:window-shutter-alert"></ha-icon>
+                  </div>`
+                : nothing}
             </div>`
           : nothing}
         <homeshift-circular-slider
@@ -501,6 +537,7 @@ class HomeShiftCard extends LitElement {
             thermo,
             day,
             heatProtectionActive,
+            this.getCoversLeftOpen(),
             coverOpenTime,
             coverCloseTime,
           )}
@@ -742,27 +779,70 @@ class HomeShiftCard extends LitElement {
       --mdi-icon-size: 14px;
     }
 
-    .heat-protection-badge {
+    /* Badges sit beside the dial and stack downwards, so heat protection
+       and covers left open can be raised at the same time without one
+       covering the other. */
+    .badge-stack {
       position: absolute;
       left: 100%;
       margin-left: 8px;
       top: 4%;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 3;
+    }
+
+    .badge {
       display: flex;
       align-items: center;
       justify-content: center;
       width: 36px;
       height: 36px;
       border-radius: 50%;
-      background: var(--error-color, #e7973c);
       color: var(--text-primary-color, #fff);
-      z-index: 3;
-      pointer-events: none;
       animation: fadeIn 0.3s ease;
     }
 
-    .heat-protection-badge ha-icon {
+    .badge ha-icon {
       color: var(--text-primary-color, #fff);
       --mdi-icon-size: 20px;
+    }
+
+    .heat-protection-badge {
+      background: var(--error-color, #e7973c);
+      pointer-events: none;
+    }
+
+    /* Pulses between orange and yellow: a cover left up is something to act
+       on tonight, not a steady status. Hoverable, so the tooltip can name
+       the covers. */
+    .covers-left-open-badge {
+      background: var(--warning-color, #ff9800);
+      cursor: help;
+      animation:
+        fadeIn 0.3s ease,
+        covers-left-open-blink 1.2s ease-in-out infinite;
+    }
+
+    @keyframes covers-left-open-blink {
+      0%,
+      100% {
+        background: var(--warning-color, #ff9800);
+        opacity: 1;
+      }
+      50% {
+        background: #ffd54f;
+        opacity: 0.55;
+      }
+    }
+
+    /* A blinking badge is exactly what reduced-motion asks us not to do;
+       the colour alone still reads as a warning. */
+    @media (prefers-reduced-motion: reduce) {
+      .covers-left-open-badge {
+        animation: fadeIn 0.3s ease;
+      }
     }
   `;
 }

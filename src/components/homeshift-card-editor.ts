@@ -9,6 +9,7 @@ interface HomeShiftCardConfig {
   cover_open_time_entity?: string;
   cover_close_time_entity?: string;
   cover_entity?: string;
+  covers_left_open_entity?: string;
   show_title?: boolean;
 }
 
@@ -120,6 +121,16 @@ class HomeShiftCardEditor extends LitElement {
           .includeDomains=${["cover"]}
           @value-changed=${(e: CustomEvent) =>
             this._onEntityChanged(e, "cover_entity")}
+          allow-custom-entity
+        ></ha-entity-picker>
+
+        <ha-entity-picker
+          label="${localize(this.hass, "editor.covers_left_open_entity")}"
+          .hass=${this.hass}
+          .value=${this._config.covers_left_open_entity || ""}
+          .includeDomains=${["binary_sensor"]}
+          @value-changed=${(e: CustomEvent) =>
+            this._onEntityChanged(e, "covers_left_open_entity")}
           allow-custom-entity
         ></ha-entity-picker>
 

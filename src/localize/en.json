@@ -12,7 +12,8 @@
     "cover_open_time": "Cover opening time",
     "cover_close_time": "Cover closing time",
     "cover_open_action": "Open now",
-    "cover_close_action": "Close now"
+    "cover_close_action": "Close now",
+    "covers_left_open": "Covers left open: {covers}"
   },
   "thermostat": {
     "heating": "Heating",
@@ -26,6 +27,7 @@
     "cover_open_time_entity": "Cover Open Time Entity",
     "cover_close_time_entity": "Cover Close Time Entity",
     "cover_entity": "Cover Entity (manual open/close)",
+    "covers_left_open_entity": "Covers Left Open Entity",
     "show_title": "Show title"
   }
 }
