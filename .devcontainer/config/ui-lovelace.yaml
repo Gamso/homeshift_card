@@ -31,6 +31,9 @@ views:
           - entity: sensor.homeshift_next_mode
           - entity: sensor.homeshift_next_mode_at
           - entity: binary_sensor.homeshift_cover_heat_active
+          - entity: input_boolean.homeshift_window_chambre_backing
+          - entity: input_boolean.homeshift_window_salon_backing
+          - entity: binary_sensor.homeshift_covers_left_open
 
   - title: Scheduler
     path: scheduler

@@ -115,6 +115,40 @@ template:
         unique_id: homeshift_cover_heat_active
         state: "{{ states('input_boolean.homeshift_heat_protection_backing') == 'on' }}"
         device_class: heat
+      # Simulates binary_sensor.homeshift_covers_left_open: each simulated open
+      # window puts its cover in the list, with the same attributes the
+      # integration publishes (count, covers, window_sensors, checked_on).
+      - name: "homeshift_covers_left_open"
+        unique_id: homeshift_covers_left_open
+        device_class: problem
+        icon: mdi:window-shutter-alert
+        state: >-
+          {{ is_state('input_boolean.homeshift_window_chambre_backing', 'on')
+             or is_state('input_boolean.homeshift_window_salon_backing', 'on') }}
+        attributes:
+          covers: >-
+            {%- set ns = namespace(covers=[]) -%}
+            {%- for cover, window in [
+                  ['cover.volet_chambre', 'input_boolean.homeshift_window_chambre_backing'],
+                  ['cover.volet_salon', 'input_boolean.homeshift_window_salon_backing'],
+                ] if is_state(window, 'on') -%}
+              {%- set ns.covers = ns.covers + [cover] -%}
+            {%- endfor -%}
+            {{ ns.covers }}
+          window_sensors: >-
+            {%- set ns = namespace(map={}) -%}
+            {%- for cover, window in [
+                  ['cover.volet_chambre', 'input_boolean.homeshift_window_chambre_backing'],
+                  ['cover.volet_salon', 'input_boolean.homeshift_window_salon_backing'],
+                ] if is_state(window, 'on') -%}
+              {%- set ns.map = dict(ns.map, **{cover: window}) -%}
+            {%- endfor -%}
+            {{ ns.map }}
+          count: >-
+            {{ [is_state('input_boolean.homeshift_window_chambre_backing', 'on'),
+                is_state('input_boolean.homeshift_window_salon_backing', 'on')]
+               | select | list | count }}
+          checked_on: "{{ now().date().isoformat() }}"
 
 # Simulates number.homeshift_override_duration and number.homeshift_early_switch
 # from the HomeShift integration.
@@ -177,6 +211,14 @@ input_boolean:
   homeshift_cover_state_backing:
     name: HomeShift Cover State (backing)
     icon: mdi:window-shutter
+  # Simulated window sensors: switch one on and its cover shows up in
+  # binary_sensor.homeshift_covers_left_open, as if tonight's close skipped it.
+  homeshift_window_chambre_backing:
+    name: Fenêtre chambre ouverte (simulation)
+    icon: mdi:window-open-variant
+  homeshift_window_salon_backing:
+    name: Fenêtre salon ouverte (simulation)
+    icon: mdi:window-open-variant
 
 # Test cover entity simulating the HomeShift daily cover group
 # (select.cover_entity in the card triggers cover.open_cover/close_cover on this entity).
@@ -195,3 +237,21 @@ cover:
           service: input_boolean.turn_off
           target:
             entity_id: input_boolean.homeshift_cover_state_backing
+      # The covers the simulated windows belong to. They exist only so the
+      # card can resolve their friendly names; up while their window is open.
+      volet_chambre:
+        friendly_name: "Volet chambre"
+        device_class: shutter
+        value_template: "{{ 'open' if is_state('input_boolean.homeshift_window_chambre_backing', 'on') else 'closed' }}"
+        open_cover:
+          - delay: 0
+        close_cover:
+          - delay: 0
+      volet_salon:
+        friendly_name: "Volet salon"
+        device_class: shutter
+        value_template: "{{ 'open' if is_state('input_boolean.homeshift_window_salon_backing', 'on') else 'closed' }}"
+        open_cover:
+          - delay: 0
+        close_cover:
+          - delay: 0
