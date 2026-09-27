@@ -10,7 +10,6 @@ interface HomeShiftCardConfig {
   cover_close_time_entity?: string;
   cover_entity?: string;
   covers_left_open_entity?: string;
-  show_title?: boolean;
 }
 
 class HomeShiftCardEditor extends LitElement {
@@ -41,17 +40,6 @@ class HomeShiftCardEditor extends LitElement {
     if ((this._config as any)[fieldName] === newValue) return;
 
     const newConfig = { ...this._config, [fieldName]: newValue };
-    this._config = newConfig;
-    this._dispatchConfigChanged(newConfig);
-  }
-
-  private _onShowTitleChanged(ev: Event) {
-    if (!this._config || !this.hass) return;
-    const target = ev.target as any;
-    const newValue = target.checked;
-    if (this._config.show_title === newValue) return;
-
-    const newConfig = { ...this._config, show_title: newValue };
     this._config = newConfig;
     this._dispatchConfigChanged(newConfig);
   }
@@ -133,13 +121,6 @@ class HomeShiftCardEditor extends LitElement {
             this._onEntityChanged(e, "covers_left_open_entity")}
           allow-custom-entity
         ></ha-entity-picker>
-
-        <ha-formfield label="${localize(this.hass, "editor.show_title")}">
-          <ha-switch
-            .checked=${this._config.show_title !== false}
-            @change=${this._onShowTitleChanged}
-          ></ha-switch>
-        </ha-formfield>
       </div>
     `;
   }

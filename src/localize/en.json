@@ -1,6 +1,5 @@
 {
   "card": {
-    "title": "Thermostat",
     "entity_not_found": "Entity not found: {entity}",
     "off": "Off",
     "next_scan": "Next scan",
@@ -13,9 +12,22 @@
     "cover_close_time": "Cover closing time",
     "cover_open_action": "Open now",
     "cover_close_action": "Close now",
-    "covers_left_open": "Covers left open: {covers}"
+    "covers_left_open": "Not closed: {covers}",
+    "day_mode": "Day mode",
+    "next": "Next",
+    "covers": "Covers",
+    "duration_off": "No",
+    "override_label": "Keep my manual choice",
+    "override_none": "A manual change is replaced at the calendar's next pass.",
+    "override_effect": "After a change by hand, the calendar waits {duration} — until {time} if you change it now.",
+    "early_label": "Start events early",
+    "early_none": "{mode} will start at its scheduled time, {time}.",
+    "early_effect": "{mode} will start at {time} instead of {scheduled}.",
+    "early_no_event": "No event scheduled.",
+    "covers_left_open_count": "Not closed: {count} covers"
   },
   "thermostat": {
+    "off": "Off",
     "heating": "Heating",
     "cooling": "Cooling",
     "ventilation": "Ventilation"
@@ -27,7 +39,6 @@
     "cover_open_time_entity": "Cover Open Time Entity",
     "cover_close_time_entity": "Cover Close Time Entity",
     "cover_entity": "Cover Entity (manual open/close)",
-    "covers_left_open_entity": "Covers Left Open Entity",
-    "show_title": "Show title"
+    "covers_left_open_entity": "Covers Left Open Entity"
   }
 }
