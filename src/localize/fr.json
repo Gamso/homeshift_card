@@ -23,7 +23,12 @@
   "editor": {
     "name": "Nom",
     "day_mode_entity": "Entité mode jour",
-    "hermostat_mode_tentity": "Entité mode thermostat",
+    "thermostat_mode_entity": "Entité mode thermostat",
+    "override_duration_entity": "Entité durée de dérogation",
+    "early_switch_entity": "Entité anticipation",
+    "next_mode_entity": "Entité prochain mode",
+    "next_mode_at_entity": "Entité heure du prochain mode",
+    "heat_protection_entity": "Entité protection thermique",
     "cover_open_time_entity": "Entité heure d'ouverture des volets",
     "cover_close_time_entity": "Entité heure de fermeture des volets",
     "cover_entity": "Entité volet (ouverture/fermeture manuelle)",
