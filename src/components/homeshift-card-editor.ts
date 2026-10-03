@@ -35,17 +35,6 @@ class HomeShiftCardEditor extends LitElement {
     this._dispatchConfigChanged(newConfig);
   }
 
-  private _onShowTitleChanged(ev: Event) {
-    if (!this._config || !this.hass) return;
-    const target = ev.target as any;
-    const newValue = target.checked;
-    if (this._config.show_title === newValue) return;
-
-    const newConfig = { ...this._config, show_title: newValue };
-    this._config = newConfig;
-    this._dispatchConfigChanged(newConfig);
-  }
-
   private _dispatchConfigChanged(newConfig: HomeShiftCardConfig) {
     const event = new CustomEvent("config-changed", {
       detail: { config: newConfig },
@@ -79,13 +68,6 @@ class HomeShiftCardEditor extends LitElement {
             allow-custom-entity
           ></ha-entity-picker>`,
         )}
-
-        <ha-formfield label="${localize(this.hass, "editor.show_title")}">
-          <ha-switch
-            .checked=${this._config.show_title !== false}
-            @change=${this._onShowTitleChanged}
-          ></ha-switch>
-        </ha-formfield>
       </div>
     `;
   }
@@ -101,12 +83,6 @@ class HomeShiftCardEditor extends LitElement {
     ha-textfield,
     ha-entity-picker {
       width: 100%;
-    }
-
-    ha-formfield {
-      display: flex;
-      align-items: center;
-      padding: 8px 0;
     }
   `;
 }

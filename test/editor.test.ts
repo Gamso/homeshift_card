@@ -70,4 +70,10 @@ describe("homeshift-card-editor", () => {
       }
     }
   });
+
+  it("has no label for an option the card does not have", () => {
+    for (const dict of [en, fr]) {
+      expect(Object.keys(dict.editor).sort()).toEqual(cardConfigKeys().sort());
+    }
+  });
 });

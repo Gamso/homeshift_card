@@ -1,8 +1,7 @@
 {
   "card": {
-    "title": "Thermostat",
     "entity_not_found": "Entity not found: {entity}",
-    "off": "Off",
+    "unavailable": "Unavailable",
     "today": "Today",
     "tomorrow": "Tomorrow",
     "heat_protection_active": "Heat protection active",
@@ -10,16 +9,26 @@
     "cover_close_time": "Cover closing time",
     "cover_open_action": "Open the covers now (scheduled {time})",
     "cover_close_action": "Close the covers now (scheduled {time})",
-    "covers_left_open": "Covers left open: {covers}",
-    "thermostat_mode": "Thermostat mode",
-    "day_mode": "Day mode",
-    "override_duration": "Override duration",
-    "early_switch": "Early switch",
     "cover_sending": "Sending…",
     "cover_open_failed": "Could not open the covers: {error}",
-    "cover_close_failed": "Could not close the covers: {error}"
+    "cover_close_failed": "Could not close the covers: {error}",
+    "covers_left_open": "Not closed: {covers}",
+    "thermostat_mode": "Thermostat mode",
+    "day_mode": "Day mode",
+    "next": "Next",
+    "covers": "Covers",
+    "duration_off": "No",
+    "override_label": "Keep my manual choice",
+    "override_none": "A manual change is replaced at the calendar's next pass.",
+    "override_effect": "After a change by hand, the calendar waits {duration} — until {time} if you change it now.",
+    "early_label": "Start events early",
+    "early_none": "{mode} will start at its scheduled time, {time}.",
+    "early_effect": "{mode} will start at {time} instead of {scheduled}.",
+    "early_no_event": "No event scheduled.",
+    "covers_left_open_count": "Not closed: {count} covers"
   },
   "thermostat": {
+    "off": "Off",
     "heating": "Heating",
     "cooling": "Cooling",
     "ventilation": "Ventilation"
@@ -38,8 +47,7 @@
     "open_covers_entity": "Open Covers Button",
     "close_covers_entity": "Close Covers Button",
     "cover_entity": "Cover Entity (legacy, overrides the buttons)",
-    "covers_left_open_entity": "Covers Left Open Entity",
-    "show_title": "Show title"
+    "covers_left_open_entity": "Covers Left Open Entity"
   },
   "preview": {
     "home": "Home",

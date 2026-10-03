@@ -1,3 +1,5 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { localize } from "../src/localize/localize";
 import en from "../src/localize/en.json";
@@ -13,15 +15,15 @@ function leafKeys(obj: Record<string, any>, prefix = ""): string[] {
 
 describe("localize", () => {
   it("resolves a key in the user's language", () => {
-    expect(localize(FR, "card.off")).toBe("Éteint");
+    expect(localize(FR, "thermostat.off")).toBe("Éteint");
   });
 
   it("falls back to English for an unknown language", () => {
-    expect(localize({ locale: { language: "de" } }, "card.off")).toBe("Off");
+    expect(localize({ locale: { language: "de" } }, "thermostat.off")).toBe("Off");
   });
 
   it("uses the region-less language code", () => {
-    expect(localize({ locale: { language: "fr-CA" } }, "card.off")).toBe(
+    expect(localize({ locale: { language: "fr-CA" } }, "thermostat.off")).toBe(
       "Éteint",
     );
   });
@@ -38,11 +40,32 @@ describe("localize", () => {
 
   it("substitutes parameters", () => {
     expect(localize(FR, "card.covers_left_open", { covers: "Salon" })).toBe(
-      "Volets non fermés : Salon",
+      "Non fermés : Salon",
     );
   });
 
   it("has the same keys in every language", () => {
     expect(leafKeys(fr).sort()).toEqual(leafKeys(en).sort());
+  });
+
+  it("has no key the sources never use", () => {
+    // Vitest runs from the repository root.
+    const dir = join(process.cwd(), "src/components");
+    const source = readdirSync(dir)
+      .map((f) => readFileSync(join(dir, f), "utf-8"))
+      .join("\n");
+    // Keys built at runtime: `thermostat.${key}`, `preview.${key}`,
+    // `editor.${field.key}` and `card.cover_${action}_...`.
+    const dynamic = [
+      /^thermostat\./,
+      /^preview\./,
+      /^editor\./,
+      /^card\.cover_(open|close)_(time|action|failed)$/,
+    ];
+    const unused = leafKeys(en).filter(
+      (key) =>
+        !source.includes(`"${key}"`) && !dynamic.some((re) => re.test(key)),
+    );
+    expect(unused).toEqual([]);
   });
 });

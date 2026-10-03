@@ -1,8 +1,7 @@
 {
   "card": {
-    "title": "Thermostat",
     "entity_not_found": "Entité introuvable: {entity}",
-    "off": "Éteint",
+    "unavailable": "Indisponible",
     "today": "Auj.",
     "tomorrow": "Dem.",
     "heat_protection_active": "Protection thermique active",
@@ -10,16 +9,26 @@
     "cover_close_time": "Heure de fermeture des volets",
     "cover_open_action": "Ouvrir les volets maintenant (prévu à {time})",
     "cover_close_action": "Fermer les volets maintenant (prévu à {time})",
-    "covers_left_open": "Volets non fermés : {covers}",
-    "thermostat_mode": "Mode thermostat",
-    "day_mode": "Mode jour",
-    "override_duration": "Durée de dérogation",
-    "early_switch": "Anticipation",
     "cover_sending": "Envoi…",
     "cover_open_failed": "Impossible d'ouvrir les volets : {error}",
-    "cover_close_failed": "Impossible de fermer les volets : {error}"
+    "cover_close_failed": "Impossible de fermer les volets : {error}",
+    "covers_left_open": "Non fermés : {covers}",
+    "thermostat_mode": "Mode thermostat",
+    "day_mode": "Mode du jour",
+    "next": "Prochain",
+    "covers": "Volets",
+    "duration_off": "Non",
+    "override_label": "Garder mon choix manuel",
+    "override_none": "Un changement manuel est remplacé au prochain passage du calendrier.",
+    "override_effect": "Après un changement à la main, le calendrier attend {duration} — jusqu'à {time} si tu changes maintenant.",
+    "early_label": "Anticiper les événements",
+    "early_none": "{mode} commencera à l'heure prévue, {time}.",
+    "early_effect": "{mode} commencera à {time} au lieu de {scheduled}.",
+    "early_no_event": "Aucun événement prévu.",
+    "covers_left_open_count": "Non fermés : {count} volets"
   },
   "thermostat": {
+    "off": "Éteint",
     "heating": "Chauffage",
     "cooling": "Climatisation",
     "ventilation": "Ventilation"
@@ -38,8 +47,7 @@
     "open_covers_entity": "Bouton d'ouverture des volets",
     "close_covers_entity": "Bouton de fermeture des volets",
     "cover_entity": "Entité volet (ancienne option, prioritaire sur les boutons)",
-    "covers_left_open_entity": "Entité volets non fermés",
-    "show_title": "Afficher le titre"
+    "covers_left_open_entity": "Entité volets non fermés"
   },
   "preview": {
     "home": "Maison",

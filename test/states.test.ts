@@ -21,8 +21,8 @@ describe("state helpers", () => {
     expect(numericState({ state: "25" })).toBe(25);
   });
 
-  it("formats minutes like the preset labels", () => {
-    expect(formatMinutes(25)).toBe("25min");
+  it("formats minutes like the settings labels", () => {
+    expect(formatMinutes(25)).toBe("25 min");
     expect(formatMinutes(60)).toBe("1h");
     expect(formatMinutes(90)).toBe("1h30");
   });
@@ -36,18 +36,28 @@ describe("missing entities (B-3)", () => {
     expect($(card, ".error")?.textContent).toContain(
       "Entity not found: select.homeshift_day_mode",
     );
-    expect($(card, "homeshift-circular-slider")).toBeNull();
+    expect($(card, ".presets")).toBeNull();
   });
 
   it("uses localized stub data in the card picker preview", async () => {
     const card = await renderCard(makeHass({}, "fr"), {}, true);
     expect($(card, ".error")).toBeNull();
-    const labels = $$(card, ".day-section option").map((o) => o.textContent!.trim());
+    const labels = $$(card, "select option").map((o) => o.textContent!.trim());
     expect(labels).toEqual(["Maison", "Travail", "Télétravail", "Absence"]);
-    const selected = $(card, ".day-section option[selected]");
+    const selected = $(card, "select option[selected]");
     expect(selected?.textContent?.trim()).toBe("Travail");
-    const slider = $(card, "homeshift-circular-slider") as any;
-    expect(slider.options).toContain(slider.currentValue);
+    expect($$(card, "button.preset").map((b) => b.textContent!.trim())).toEqual(
+      ["Éteint", "Chauffage", "Climatisation", "Ventilation"],
+    );
+    expect($(card, "button.preset.on")?.textContent?.trim()).toBe("Chauffage");
+    expect(card.shadowRoot!.textContent).not.toContain("preview.");
+  });
+
+  it("hides a setting whose number entity is missing", async () => {
+    const states = homeshiftStates();
+    delete states["number.homeshift_early_switch"];
+    const card = await renderCard(makeHass(states));
+    expect($$(card, ".setting")).toHaveLength(1);
   });
 });
 
@@ -57,7 +67,7 @@ describe("unknown / unavailable sensors (B-4)", () => {
     states["sensor.homeshift_next_mode"] = entity("sensor.homeshift_next_mode", s);
     states["sensor.homeshift_next_mode_at"] = entity("sensor.homeshift_next_mode_at", s);
     const card = await renderCard(makeHass(states));
-    expect($(card, ".next-info")).toBeNull();
+    expect($(card, ".next-row")).toBeNull();
     expect(card.shadowRoot!.textContent).not.toContain(s);
   });
 
@@ -70,14 +80,15 @@ describe("unknown / unavailable sensors (B-4)", () => {
   });
 });
 
-describe("number dropdowns (B-5)", () => {
+describe("duration settings (B-5)", () => {
   it("is neither highlighted nor NaN when unavailable", async () => {
     const states = homeshiftStates();
     states["number.homeshift_override_duration"].state = "unavailable";
     const card = await renderCard(makeHass(states));
-    const select = $(card, ".list-select--override") as HTMLSelectElement;
-    expect(select.classList.contains("active")).toBe(false);
-    expect(select.disabled).toBe(true);
+    const head = $$(card, "button.setting-head")[0] as HTMLButtonElement;
+    expect(head.disabled).toBe(true);
+    expect($(card, ".setting-value")?.classList.contains("set")).toBe(false);
+    expect($(card, ".setting-value")?.textContent).toBe("Unavailable");
     expect(card.shadowRoot!.innerHTML).not.toContain("NaN");
   });
 
@@ -85,25 +96,20 @@ describe("number dropdowns (B-5)", () => {
     const states = homeshiftStates();
     states["number.homeshift_early_switch"].state = "25";
     const card = await renderCard(makeHass(states));
-    const select = $(card, ".list-select--early") as HTMLSelectElement;
-    expect(select.classList.contains("active")).toBe(true);
-    // happy-dom miscounts selectedIndex next to Lit's comment markers, so
-    // assert on the attribute a browser uses to pick the selected option.
-    const selected = select.querySelectorAll("option[selected]");
-    expect(selected).toHaveLength(1);
-    expect((selected[0] as HTMLOptionElement).value).toBe("25");
-    expect(selected[0].textContent!.trim()).toBe("25min");
+    const value = $$(card, ".setting-value")[1];
+    expect(value.textContent).toBe("25 min");
+    expect(value.classList.contains("set")).toBe(true);
   });
 
-  it("calls number.set_value with the chosen preset", async () => {
+  it("calls number.set_value with the next preset", async () => {
     const hass = makeHass(homeshiftStates());
     const card = await renderCard(hass);
-    const select = $(card, ".list-select--override") as HTMLSelectElement;
-    select.value = "60";
-    select.dispatchEvent(new Event("change"));
+    $$(card, "button.setting-head")[0].click();
+    await card.updateComplete;
+    $$(card, ".stepper button")[1].click();
     expect(hass.callService).toHaveBeenCalledWith("number", "set_value", {
       entity_id: "number.homeshift_override_duration",
-      value: 60,
+      value: 15,
     });
   });
 });
@@ -117,8 +123,8 @@ describe("cover entity (B-2)", () => {
   it("does not act on a configured but missing cover", async () => {
     const hass = makeHass(homeshiftStates());
     const card = await renderCard(hass, { cover_entity: "cover.nope" });
-    const row = $(card, ".cover-time-row")!;
-    expect(row.classList.contains("actionable")).toBe(false);
+    const row = $(card, ".cover-time")!;
+    expect(row.tagName).toBe("SPAN");
     row.click();
     expect(hass.callService).not.toHaveBeenCalled();
   });

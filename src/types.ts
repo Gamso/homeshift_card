@@ -17,7 +17,6 @@ export interface HomeShiftCardConfig {
   /** Legacy: when set, the rows call cover.open/close_cover on it instead. */
   cover_entity?: string;
   covers_left_open_entity?: string;
-  show_title?: boolean;
 }
 
 export type EntityConfigKey = {
