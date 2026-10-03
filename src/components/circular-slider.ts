@@ -28,6 +28,8 @@ export class HomeShiftCircularSlider extends LitElement {
   @property({ type: Array }) public options: string[] = [];
   /** Optional display labels shown on the arc. Falls back to options[i] when not provided. */
   @property({ type: Array }) public labels: string[] = [];
+  /** Accessible name of the whole selector (e.g. "Thermostat mode"). */
+  @property() public label = "";
   @property({ type: Number }) private selectedIndex = -1;
 
   /* =======================
@@ -58,6 +60,53 @@ export class HomeShiftCircularSlider extends LitElement {
     return [`${length} 10`, `-${start}`];
   }
 
+  private _select(index: number) {
+    this.dispatchEvent(
+      new CustomEvent("option-selected", {
+        detail: { option: this.options[index] },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  /**
+   * Keyboard support: arrows move the focus along the arc (wrapping),
+   * Enter / Space activate the focused mode. Arrows do not activate, so
+   * browsing the modes does not switch the thermostat on each key press.
+   */
+  private _onKeyDown(e: KeyboardEvent, index: number) {
+    const n = this.options.length;
+    let target: number | undefined;
+    switch (e.key) {
+      case "ArrowRight":
+      case "ArrowUp":
+        target = (index + 1) % n;
+        break;
+      case "ArrowLeft":
+      case "ArrowDown":
+        target = (index - 1 + n) % n;
+        break;
+      case "Home":
+        target = 0;
+        break;
+      case "End":
+        target = n - 1;
+        break;
+      case "Enter":
+      case " ":
+        e.preventDefault();
+        this._select(index);
+        return;
+      default:
+        return;
+    }
+    e.preventDefault();
+    this.renderRoot
+      .querySelector<SVGGElement>(`.segment[data-index="${target}"]`)
+      ?.focus();
+  }
+
   /* =======================
      RENDER
   ======================= */
@@ -83,7 +132,7 @@ export class HomeShiftCircularSlider extends LitElement {
 
     return html`
       <div class="slider-container">
-        <svg viewBox="0 0 200 200">
+        <svg viewBox="0 0 200 200" role="radiogroup" aria-label=${this.label}>
           <defs>
             <path id="arcPath" d="${ARC_PATH}" pathLength="1" />
           </defs>
@@ -150,31 +199,6 @@ export class HomeShiftCircularSlider extends LitElement {
           })()}
           ${this.options.map((_mode, i) => {
             const [dasharray, dashoffset] = this._strokeDashArc(i, i + 1);
-
-            return svg`
-              <path
-                d="${ARC_PATH}"
-                fill="none"
-                stroke="transparent"
-                stroke-width="${STROKE_WIDTH + CLICK_AREA_PADDING}"
-                stroke-dasharray="${dasharray}"
-                stroke-dashoffset="${dashoffset}"
-                pathLength="1"
-                style="cursor: pointer;"
-                @click=${(e: Event) => {
-                  e.stopPropagation();
-                  this.dispatchEvent(
-                    new CustomEvent("option-selected", {
-                      detail: { option: this.options[i] },
-                      bubbles: true,
-                      composed: true,
-                    }),
-                  );
-                }}
-              />
-            `;
-          })}
-          ${this.options.map((_mode, i) => {
             // Compute the center position of the segment
             const segmentStart = this._valueToPercentage(i);
             const segmentEnd = this._valueToPercentage(i + 1);
@@ -182,30 +206,47 @@ export class HomeShiftCircularSlider extends LitElement {
             const startOffset = segmentCenter * 100;
             // Prefer the translated label when provided, fall back to the raw option value
             const displayLabel = this.labels[i] ?? this.options[i];
+            // Roving tabindex: one tab stop, on the active mode (or the first).
+            const tabStop =
+              this.selectedIndex === -1 ? i === 0 : i === this.selectedIndex;
 
             return svg`
-              <text
-                font-size="12"
-                font-weight="600"
-                fill="var(--primary-text-color)"
-                text-anchor="middle"
-                dominant-baseline="middle"
-                style="cursor: pointer; user-select: none;"
+              <g
+                class="segment"
+                data-index="${i}"
+                role="radio"
+                aria-checked="${i === this.selectedIndex}"
+                aria-label="${displayLabel}"
+                tabindex="${tabStop ? 0 : -1}"
                 @click=${(e: Event) => {
                   e.stopPropagation();
-                  this.dispatchEvent(
-                    new CustomEvent("option-selected", {
-                      detail: { option: this.options[i] },
-                      bubbles: true,
-                      composed: true,
-                    }),
-                  );
+                  this._select(i);
                 }}
+                @keydown=${(e: KeyboardEvent) => this._onKeyDown(e, i)}
               >
-                <textPath href="#arcPath" startOffset="${startOffset}%" text-anchor="middle">
-                  ${displayLabel}
-                </textPath>
-              </text>
+                <path
+                  class="hit"
+                  d="${ARC_PATH}"
+                  fill="none"
+                  stroke="transparent"
+                  stroke-width="${STROKE_WIDTH + CLICK_AREA_PADDING}"
+                  stroke-dasharray="${dasharray}"
+                  stroke-dashoffset="${dashoffset}"
+                  pathLength="1"
+                />
+                <text
+                  font-size="12"
+                  font-weight="600"
+                  fill="var(--primary-text-color)"
+                  text-anchor="middle"
+                  dominant-baseline="middle"
+                  aria-hidden="true"
+                >
+                  <textPath href="#arcPath" startOffset="${startOffset}%" text-anchor="middle">
+                    ${displayLabel}
+                  </textPath>
+                </text>
+              </g>
             `;
           })}
         </svg>
@@ -229,7 +270,20 @@ export class HomeShiftCircularSlider extends LitElement {
       max-width: 240px;
       aspect-ratio: 1;
     }
+
+    .segment {
+      cursor: pointer;
+      user-select: none;
+      outline: none;
+    }
+
+    .segment:focus-visible .hit {
+      stroke: var(--primary-text-color, #000);
+      stroke-opacity: 0.25;
+    }
   `;
 }
 
-customElements.define("homeshift-circular-slider", HomeShiftCircularSlider);
+if (!customElements.get("homeshift-circular-slider")) {
+  customElements.define("homeshift-circular-slider", HomeShiftCircularSlider);
+}

@@ -10,7 +10,11 @@
     "cover_close_time": "Cover closing time",
     "cover_open_action": "Open now",
     "cover_close_action": "Close now",
-    "covers_left_open": "Covers left open: {covers}"
+    "covers_left_open": "Covers left open: {covers}",
+    "thermostat_mode": "Thermostat mode",
+    "day_mode": "Day mode",
+    "override_duration": "Override duration",
+    "early_switch": "Early switch"
   },
   "thermostat": {
     "heating": "Heating",
