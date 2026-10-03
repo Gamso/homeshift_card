@@ -41,6 +41,8 @@ class HomeShiftCard extends LitElement {
   /** Set by Home Assistant in the card picker and the editor preview. */
   @property({ type: Boolean }) public preview = false;
   @state() private _config!: HomeShiftCardConfig;
+  /** Badge whose detail text is expanded (tap / keyboard), if any. */
+  @state() private _openBadge?: "heat" | "covers";
   /** Bumped at midnight so the "Today" / "Tomorrow" prefixes roll over. */
   @state() private _day = 0;
   private _midnightTimer?: ReturnType<typeof setTimeout>;
@@ -113,7 +115,7 @@ class HomeShiftCard extends LitElement {
 
   protected shouldUpdate(changedProps: Map<string, unknown>): boolean {
     if (changedProps.has("_config") || changedProps.has("preview")) return true;
-    if (changedProps.has("_day")) return true;
+    if (changedProps.has("_day") || changedProps.has("_openBadge")) return true;
     if (changedProps.has("hass")) {
       const oldHass = changedProps.get("hass") as any;
       if (!oldHass) return true;
@@ -185,6 +187,7 @@ class HomeShiftCard extends LitElement {
     entityId: string | undefined,
     presets: { label: string; value: number }[],
     modifierClass: string,
+    label: string,
   ) {
     if (!entityId) return nothing;
     const current = numericState(this.getEntityState(entityId));
@@ -196,6 +199,7 @@ class HomeShiftCard extends LitElement {
         : presets;
     const active = current !== undefined && current !== 0;
     return html`<select
+      aria-label=${label}
       .value=${current === undefined ? "" : String(current)}
       class="list-select ${modifierClass} ${active ? "active" : ""}"
       ?disabled=${current === undefined}
@@ -225,6 +229,31 @@ class HomeShiftCard extends LitElement {
       return `${localize(this.hass, "card.tomorrow")} ${timeStr}`;
     }
     return `${formatShortDate(dt, this.hass?.locale)} ${timeStr}`;
+  }
+
+  /**
+   * Status badge beside the dial. A button rather than a hover-only title:
+   * tapping it (touch screens have no hover) or pressing Enter shows the
+   * detail text inline, and screen readers get it as the accessible name.
+   */
+  private _renderBadge(
+    id: "heat" | "covers",
+    modifierClass: string,
+    icon: string,
+    text: string,
+  ) {
+    const open = this._openBadge === id;
+    return html`<button
+        type="button"
+        class="badge ${modifierClass}"
+        title=${text}
+        aria-label=${text}
+        aria-expanded=${open ? "true" : "false"}
+        @click=${() => (this._openBadge = open ? undefined : id)}
+      >
+        <ha-icon icon=${icon}></ha-icon>
+      </button>
+      ${open ? html`<div class="badge-detail">${text}</div>` : nothing}`;
   }
 
   private _renderMain(
@@ -333,31 +362,27 @@ class HomeShiftCard extends LitElement {
         ${heatProtectionActive || coversLeftOpen.length > 0
           ? html`<div class="badge-stack">
               ${heatProtectionActive
-                ? html`<div
-                    class="badge heat-protection-badge"
-                    title="${localize(
-                      this.hass,
-                      "card.heat_protection_active",
-                    )}"
-                  >
-                    <ha-icon icon="mdi:window-shutter"></ha-icon>
-                  </div>`
+                ? this._renderBadge(
+                    "heat",
+                    "heat-protection-badge",
+                    "mdi:window-shutter",
+                    localize(this.hass, "card.heat_protection_active"),
+                  )
                 : nothing}
               ${coversLeftOpen.length > 0
-                ? html`<div
-                    class="badge covers-left-open-badge"
-                    title="${localize(
-                      this.hass,
-                      "card.covers_left_open",
-                      { covers: coversLeftOpen.join(", ") },
-                    )}"
-                  >
-                    <ha-icon icon="mdi:window-shutter-alert"></ha-icon>
-                  </div>`
+                ? this._renderBadge(
+                    "covers",
+                    "covers-left-open-badge",
+                    "mdi:window-shutter-alert",
+                    localize(this.hass, "card.covers_left_open", {
+                      covers: coversLeftOpen.join(", "),
+                    }),
+                  )
                 : nothing}
             </div>`
           : nothing}
         <homeshift-circular-slider
+          .label=${localize(this.hass, "card.thermostat_mode")}
           .currentValue=${thermo.state}
           .options=${thermoSliderOptions}
           .labels=${thermoLocalizedLabels}
@@ -384,6 +409,7 @@ class HomeShiftCard extends LitElement {
             this._config.early_switch_entity,
             HomeShiftCard.EARLY_SWITCH_PRESETS,
             "list-select--early",
+            localize(this.hass, "card.early_switch"),
           )}
         </div>
 
@@ -391,6 +417,7 @@ class HomeShiftCard extends LitElement {
           <div class="bottom-controls">
             <div class="day-section">
               <select
+                aria-label=${localize(this.hass, "card.day_mode")}
                 .value=${day.state}
                 @change=${(e: Event) => this.onSelect(day.entity_id, e)}
               >
@@ -410,6 +437,7 @@ class HomeShiftCard extends LitElement {
               this._config.override_duration_entity,
               HomeShiftCard.OVERRIDE_PRESETS,
               "list-select--override",
+              localize(this.hass, "card.override_duration"),
             )}
           </div>
         </div>
@@ -712,9 +740,30 @@ class HomeShiftCard extends LitElement {
       justify-content: center;
       width: 36px;
       height: 36px;
+      padding: 0;
+      border: none;
       border-radius: 50%;
       color: var(--text-primary-color, #fff);
+      cursor: pointer;
+      font: inherit;
       animation: fadeIn 0.3s ease;
+    }
+
+    .badge:focus-visible {
+      outline: 2px solid var(--primary-color);
+      outline-offset: 2px;
+    }
+
+    .badge-detail {
+      max-width: 140px;
+      padding: 4px 8px;
+      border-radius: 8px;
+      background: var(--card-background-color, #fff);
+      border: 1px solid var(--divider-color, rgba(0, 0, 0, 0.1));
+      color: var(--primary-text-color);
+      font-size: 11px;
+      text-align: left;
+      animation: fadeIn 0.2s ease;
     }
 
     .badge ha-icon {
@@ -724,15 +773,12 @@ class HomeShiftCard extends LitElement {
 
     .heat-protection-badge {
       background: var(--error-color, #e7973c);
-      pointer-events: none;
     }
 
     /* Pulses between orange and yellow: a cover left up is something to act
-       on tonight, not a steady status. Hoverable, so the tooltip can name
-       the covers. */
+       on tonight, not a steady status. Tapping it names the covers. */
     .covers-left-open-badge {
       background: var(--warning-color, #ff9800);
-      cursor: help;
       animation:
         fadeIn 0.3s ease,
         covers-left-open-blink 1.2s ease-in-out infinite;

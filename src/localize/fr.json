@@ -10,7 +10,11 @@
     "cover_close_time": "Heure de fermeture des volets",
     "cover_open_action": "Ouvrir maintenant",
     "cover_close_action": "Fermer maintenant",
-    "covers_left_open": "Volets non fermés : {covers}"
+    "covers_left_open": "Volets non fermés : {covers}",
+    "thermostat_mode": "Mode thermostat",
+    "day_mode": "Mode jour",
+    "override_duration": "Durée de dérogation",
+    "early_switch": "Anticipation"
   },
   "thermostat": {
     "heating": "Chauffage",
