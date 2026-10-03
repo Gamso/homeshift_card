@@ -18,6 +18,8 @@
     "next": "Prochain",
     "covers": "Volets",
     "duration_off": "Non",
+    "decrease": "Diminuer : {setting}",
+    "increase": "Augmenter : {setting}",
     "override_label": "Garder mon choix manuel",
     "override_none": "Un changement manuel est remplacé au prochain passage du calendrier.",
     "override_effect": "Après un changement à la main, le calendrier attend {duration} — jusqu'à {time} si tu changes maintenant.",

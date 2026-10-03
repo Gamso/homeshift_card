@@ -387,16 +387,22 @@ class HomeShiftCard extends LitElement {
         ? html`<div class="setting-body">
             <div class="stepper">
               <button
-                aria-label="-"
+                aria-label=${localize(this.hass, "card.decrease", {
+                  setting: label,
+                })}
                 ?disabled=${current <= presets[0]}
                 @click=${() =>
                   this._stepSetting(name, presets, current, -1)}
               >
                 −
               </button>
-              <span class="stepper-value">${this._settingLabel(current)}</span>
+              <span class="stepper-value" aria-live="polite"
+                >${this._settingLabel(current)}</span
+              >
               <button
-                aria-label="+"
+                aria-label=${localize(this.hass, "card.increase", {
+                  setting: label,
+                })}
                 ?disabled=${current >= presets[presets.length - 1]}
                 @click=${() => this._stepSetting(name, presets, current, 1)}
               >
