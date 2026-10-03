@@ -8,7 +8,7 @@ import { property } from "lit/decorators.js";
 const STROKE_WIDTH = 25;
 const CLICK_AREA_PADDING = 10;
 
-// 180° arc (opening at the bottom)
+// ~250° arc of radius 85, open at the bottom (chord from x=30 to x=170 at y=150)
 const ARC_PATH = "M 30 150 A 85 85 0 1 1 170 150";
 
 /* =======================

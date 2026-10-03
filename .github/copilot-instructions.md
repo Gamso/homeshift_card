@@ -5,71 +5,39 @@ These rules guide AI agents working on this Home Assistant custom card. Focus on
 ## Architecture Overview
 
 - **Entry point:** [src/index.ts](src/index.ts) registers the card in `window.customCards` and imports the implementation module.
-- **Main card:** [src/components/homershiftcard.ts](src/components/homershift-card.ts) defines `HomeShiftCard` (Lit v3) wrapper with `hass` context, grid layout (day mode select + thermostat gauge), and `_config` state.
-- **Circular slider:** [src/components/circular-slider.ts](src/components/circular-slider.ts) defines `HomeShiftCircularSlider` (standalone Lit component) for 250° arc gauge with interactive pastilles; used by main card via `<homershift-circular-slider>` custom element.
-- **Localization:** [src/localize/localize.ts](src/localize/localize.ts) provides `localize(hass, key, params)` using [src/localize/en.json](src/localize/en.json) and [src/localize/fr.json](src/localize/fr.json). Language resolves from `hass.locale.language`.
-- **Build artifacts:** Rollup outputs ES module to `dist/homershift-card.js`; HA loads it as `/local/homershift_card/homershift-card.js` in DevContainer config.
+- **Config:** [src/types.ts](src/types.ts) exports `HomeShiftCardConfig` and `ENTITY_FIELDS`, the single table of entity options (key, picker domains, default entity). The card's defaults, its watched entities and the editor's pickers are all derived from it.
+- **Main card:** [src/components/homeshift-card.ts](src/components/homeshift-card.ts) defines `HomeShiftCard` (Lit 3), registered as `homeshift-card`: cover times / "open-close now" buttons, status badges, the circular thermostat selector, next mode, day mode and the two minutes dropdowns.
+- **Editor:** [src/components/homeshift-card-editor.ts](src/components/homeshift-card-editor.ts) defines `homeshift-card-editor`, one `ha-entity-picker` per `ENTITY_FIELDS` entry.
+- **Circular slider:** [src/components/circular-slider.ts](src/components/circular-slider.ts) defines `HomeShiftCircularSlider` (`homeshift-circular-slider`): a ~250° SVG arc open at the bottom, one equal segment per option, exposed as a keyboard-operable radiogroup. It only emits `option-selected`; the card performs the service call.
+- **State helpers:** [src/state.ts](src/state.ts) (`isUsable`, `numericState`, `formatMinutes`) and [src/time.ts](src/time.ts) (time formatting from `hass.locale`).
+- **Localization:** [src/localize/localize.ts](src/localize/localize.ts) provides `localize(hass, key, params?, fallback?)` using [src/localize/en.json](src/localize/en.json) and [src/localize/fr.json](src/localize/fr.json). Lookup: user language, English, `fallback`, then the key.
+- **Build artifacts:** Rollup outputs a minified ES module to `dist/homeshift-card.js` (committed, no sourcemap); HA loads it as `/local/homeshift_card/homeshift-card.js` in the DevContainer.
 
 ## Build & Dev Workflows
 
-- **Install & build:** `npm install` then `npm run build` (Rollup; see [rollup.config.js](rollup.config.js)).
+- **Install & build:** `npm ci` then `npm run build` (Rollup; see [rollup.config.js](rollup.config.js)). Commit the rebuilt `dist/`; CI fails if it differs from a fresh build.
+- **Checks:** `npm run typecheck`, `npm run lint`, `npm test` (Vitest + happy-dom, tests in `test/`).
 - **Watch mode:** `npm run watch` for incremental builds.
-- **DevContainer:** See [README.md](README.md) for HA dev setup, resource mounting, and dashboard YAML. Do not alter DevContainer paths unless asked.
+- **DevContainer:** see [.devcontainer/README.md](.devcontainer/README.md); `dist/` is mounted on `/config/www/homeshift_card`.
 
 ## Card Patterns
 
-- **Registration:** Ensure `customElements.define("homershift-card", HomeShiftCard)` remains, and keep `window.customCards.push({...})` in [src/index.ts](src/index.ts) when adding metadata.
-- **Config handling:** Implement defaults via `getStubConfig()` and normalize in `setConfig(config)`; keep keys `name`, `day_mode_entity`, `hermostat_mode_tentity`.
-- **State access:** Read entity state from `this.hass.states[entityId]` via helper `getEntityState()`.
-- **Service calls:** Use `this.hass.callService("input_select", "select_option", { entity_id, option })` for updates (examples in `onSelect()` and circular-slider).
-- **Rendering:** Use Lit `html` templates with `ha-card` wrapper; render fallback error blocks when entities are missing; return `nothing` when `hass` or `_config` is unavailable.
-- **Styling:** Add styles under `static styles = css\`...\``; prefer CSS variables (`--primary-color`, `--divider-color`) to match HA themes.
-
-## Circular Slider Component Pattern
-
-The `HomeShiftCircularSlider` ([src/components/circular-slider.ts](src/components/circular-slider.ts)) is a reusable component for selecting from discrete options via a 250° arc gauge:
-
-- **Constants** (module-level): `MAX_ANGLE = 250` (3/4 circle), `ROTATE_ANGLE = -45` (opens downward), `RADIUS = 85` (arc radius in SVG coordinates).
-- **Properties:** `@property hass`, `@property entityId`, `@property options[]`, `@property currentValue`.
-- **Key methods:**
-  - `_valueToPercentage(index)`: Maps option index to 0-1 range: `index / (options.length - 1)`.
-  - `_strokeDashArc(fromIndex, toIndex)`: Calculates `[dasharray, dashoffset]` for stroke-based arc segments using circumference formula: `track = (RADIUS * 2 * π * MAX_ANGLE) / 360`.
-  - `_getPercentageFromEvent(e)`: Converts click/touch position to percentage via `atan2` polar conversion (`Math.atan2(y, x)`), then maps angle to option index.
-  - `_onSelect(index)`: Calls `hass.callService("input_select", "select_option", { entity_id: entityId, option: options[index] })`.
-- **SVG rendering:** Single shared arc path with `stroke-dasharray`/`stroke-dashoffset` per segment; pastilles (circles, 6px radius) at each option; labels with rotation transforms for readability.
-- **Usage in main card:** Import path `"./circular-slider"` in homershift-card.ts, then render via `<homershift-circular-slider .hass=${this.hass} .entityId=${thermo.entity_id} .options=${thermoOptions} .currentValue=${thermo.state}></homershift-circular-slider>`.
-- **Extending the pattern:** To create similar gauges for other use cases, copy the component structure, adjust `MAX_ANGLE`/`RADIUS` constants, and customize SVG styling (colors, stroke-width) via CSS variables.
+- **Registration:** keep the `customElements.get(...)` guards before `customElements.define("homeshift-card", ...)`, and the `window.customCards.push({...})` in [src/index.ts](src/index.ts).
+- **Config handling:** add an entity option to `HomeShiftCardConfig` and `ENTITY_FIELDS` (plus an `editor.<key>` label in both JSON files); `setConfig` applies the defaults. Keys: `name`, `show_title`, `day_mode_entity`, `thermostat_mode_entity`, `override_duration_entity`, `early_switch_entity`, `next_mode_entity`, `next_mode_at_entity`, `heat_protection_entity`, `cover_open_time_entity`, `cover_close_time_entity`, `open_covers_entity`, `close_covers_entity`, `cover_entity` (legacy, overrides the buttons), `covers_left_open_entity`.
+- **State access:** read entities with `getEntityState()`; filter `unknown` / `unavailable` with `isUsable()` before displaying a state.
+- **Missing entities:** stub data is only used when HA sets `preview`; otherwise show `card.entity_not_found`.
+- **Service calls:** `select.select_option` (day / thermostat mode), `number.set_value` (dropdowns), `button.press` on the integration buttons (or `cover.open_cover` / `close_cover` for a legacy `cover_entity`). Report failures with a `hass-notification` event, never leave a promise unhandled.
+- **Accessibility:** interactive elements are `<button>` / `<select>` with a localized `aria-label`; no hover-only information.
+- **Styling:** add styles under `static styles = css\`...\``; prefer HA CSS variables (`--primary-color`, `--divider-color`) and honour `prefers-reduced-motion`.
 
 ## Localization Conventions
 
-- **Keys:** Use dot paths like `card.mode_jour`, `card.entity_not_found`.
-- **Params:** Pass values via `localize(this.hass, "card.entity_not_found", { entity: id })`.
-- **Language fallback:** `localize()` falls back to English; add keys to both `en.json` and `fr.json`.
-
-## Project Conventions
-
-- **TypeScript:** Strict settings (see [tsconfig.json](tsconfig.json)); target ES2020; modules are ESM.
-- **Dependencies:** `lit` for UI; `custom-card-helpers` is available if needed, but not required by current code.
-- **Structure:** Keep source under `src/`, output to `dist/`; do not move files arbitrarily.
+- **Keys:** dot paths like `card.entity_not_found`, `editor.day_mode_entity`, `thermostat.heating`.
+- **Params:** `localize(this.hass, "card.entity_not_found", { entity: id })`.
+- **Both languages:** add every key to `en.json` and `fr.json`; a test enforces identical key sets.
 
 ## Safe Changes for Agents
 
-- **Minimal diffs:** Change only what’s needed; preserve public API (`HomeShiftCard`, tag name, config keys).
-- **Feature additions:**
-  - Add new localized labels by extending JSON dictionaries and using `localize()` in templates.
-  - Extend configuration by updating `HomeShiftCardConfig`, `getStubConfig()`, and `setConfig()` consistently.
-  - New interactions should call HA services through `hass.callService` and read entity data via `this.hass.states`.
-- **Build output:** Ensure changes still produce `dist/homershift-card.js` via Rollup. Do not rename the output file.
-
-## Practical Examples
-
-- **Add a localized label:**
-  - Update [src/localize/en.json](src/localize/en.json) and [src/localize/fr.json](src/localize/fr.json) with `card.new_label`.
-  - Use `localize(this.hass, "card.new_label")` in [src/components/homeshift-card.ts](src/components/homeshift-card.ts).
-- **Add a new config key:**
-  - Extend the `HomeShiftCardConfig` interface and defaults, then reference it in `render()`.
-
-## Debug Notes
-
-- If the card doesn’t appear, confirm HA resource points to `/local/workspaces/homeshift/homeshift-card.js` and that `npm run build` generated `dist/homeshift-card.js`.
-- Use `npm run watch` during dev and reload Lovelace to see updates.
+- **Minimal diffs:** change only what's needed; preserve the public API (`HomeShiftCard`, tag names, config keys).
+- **Tests:** add a Vitest test in `test/` for every bug fix or new option.
+- **Build output:** do not rename `dist/homeshift-card.js` (HACS `filename`).
