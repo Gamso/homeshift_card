@@ -1,6 +1,5 @@
 {
   "card": {
-    "title": "Thermostat",
     "entity_not_found": "Entité introuvable: {entity}",
     "off": "Éteint",
     "next_scan": "Prochain scan",
@@ -13,9 +12,22 @@
     "cover_close_time": "Heure de fermeture des volets",
     "cover_open_action": "Ouvrir maintenant",
     "cover_close_action": "Fermer maintenant",
-    "covers_left_open": "Volets non fermés : {covers}"
+    "covers_left_open": "Non fermés : {covers}",
+    "day_mode": "Mode du jour",
+    "next": "Prochain",
+    "covers": "Volets",
+    "duration_off": "Non",
+    "override_label": "Garder mon choix manuel",
+    "override_none": "Un changement manuel est remplacé au prochain passage du calendrier.",
+    "override_effect": "Après un changement à la main, le calendrier attend {duration} — jusqu'à {time} si tu changes maintenant.",
+    "early_label": "Anticiper les événements",
+    "early_none": "{mode} commencera à l'heure prévue, {time}.",
+    "early_effect": "{mode} commencera à {time} au lieu de {scheduled}.",
+    "early_no_event": "Aucun événement prévu.",
+    "covers_left_open_count": "Non fermés : {count} volets"
   },
   "thermostat": {
+    "off": "Éteint",
     "heating": "Chauffage",
     "cooling": "Climatisation",
     "ventilation": "Ventilation"
@@ -27,7 +39,6 @@
     "cover_open_time_entity": "Entité heure d'ouverture des volets",
     "cover_close_time_entity": "Entité heure de fermeture des volets",
     "cover_entity": "Entité volet (ouverture/fermeture manuelle)",
-    "covers_left_open_entity": "Entité volets non fermés",
-    "show_title": "Afficher le titre"
+    "covers_left_open_entity": "Entité volets non fermés"
   }
 }

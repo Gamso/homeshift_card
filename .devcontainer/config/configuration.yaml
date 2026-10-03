@@ -49,6 +49,10 @@ template:
         unique_id: homeshift_day_mode
         state: "{{ states('input_select.homeshift_day_mode_backing') }}"
         options: "{{ state_attr('input_select.homeshift_day_mode_backing', 'options') }}"
+        attributes:
+          option_map: "{{ {'home': 'Maison', 'work': 'Travail', 'remote': 'Télétravail', 'away': 'Absence'} }}"
+          option_keys: "{{ {'home': 'Maison', 'work': 'Travail', 'remote': 'Télétravail', 'away': 'Absence'}.keys() | list }}"
+          current_key: "{{ {'Maison': 'home', 'Travail': 'work', 'Télétravail': 'remote', 'Absence': 'away'}.get(states('input_select.homeshift_day_mode_backing')) }}"
         select_option:
           service: input_select.select_option
           data:
@@ -58,6 +62,10 @@ template:
         unique_id: homeshift_thermostat_mode
         state: "{{ states('input_select.homeshift_thermostat_mode_backing') }}"
         options: "{{ state_attr('input_select.homeshift_thermostat_mode_backing', 'options') }}"
+        attributes:
+          option_map: "{{ {'off': 'Eteint', 'heating': 'Chauffage', 'cooling': 'Climatisation', 'ventilation': 'Ventilation'} }}"
+          option_keys: "{{ {'off': 'Eteint', 'heating': 'Chauffage', 'cooling': 'Climatisation', 'ventilation': 'Ventilation'}.keys() | list }}"
+          current_key: "{{ {'Eteint': 'off', 'Chauffage': 'heating', 'Climatisation': 'cooling', 'Ventilation': 'ventilation'}.get(states('input_select.homeshift_thermostat_mode_backing')) }}"
         select_option:
           service: input_select.select_option
           data:

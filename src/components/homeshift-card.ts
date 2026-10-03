@@ -1,7 +1,6 @@
 import { LitElement, html, css, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 import { localize } from "../localize/localize";
-import "./circular-slider";
 import "./homeshift-card-editor";
 
 interface HomeShiftCardConfig {
@@ -17,7 +16,6 @@ interface HomeShiftCardConfig {
   cover_close_time_entity?: string;
   cover_entity?: string;
   covers_left_open_entity?: string;
-  show_title?: boolean;
 }
 
 class HomeShiftCard extends LitElement {
@@ -53,7 +51,9 @@ class HomeShiftCard extends LitElement {
   @property({ attribute: false }) public hass!: any;
   @state() private _config!: HomeShiftCardConfig;
   @state() private _tick = 0;
+  @state() private _openSetting: "override" | "early" | null = null;
   private _refreshInterval?: ReturnType<typeof setInterval>;
+  private _settingTimeout?: ReturnType<typeof setTimeout>;
 
   connectedCallback() {
     super.connectedCallback();
@@ -65,6 +65,7 @@ class HomeShiftCard extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     clearInterval(this._refreshInterval);
+    clearTimeout(this._settingTimeout);
   }
 
   public static getStubConfig(): HomeShiftCardConfig {
@@ -82,7 +83,6 @@ class HomeShiftCard extends LitElement {
       cover_close_time_entity: "sensor.homeshift_cover_close_time",
       cover_entity: "cover.homeshift_daily_covers",
       covers_left_open_entity: "binary_sensor.homeshift_covers_left_open",
-      show_title: true,
     };
   }
 
@@ -117,7 +117,6 @@ class HomeShiftCard extends LitElement {
       covers_left_open_entity:
         config.covers_left_open_entity ??
         "binary_sensor.homeshift_covers_left_open",
-      show_title: config.show_title !== false,
     };
   }
 
@@ -128,6 +127,7 @@ class HomeShiftCard extends LitElement {
   protected shouldUpdate(changedProps: Map<string, unknown>): boolean {
     if (changedProps.has("_config")) return true;
     if (changedProps.has("_tick")) return true;
+    if (changedProps.has("_openSetting")) return true;
     if (changedProps.has("hass")) {
       const oldHass = changedProps.get("hass") as any;
       if (!oldHass) return true;
@@ -149,6 +149,47 @@ class HomeShiftCard extends LitElement {
       );
     }
     return false;
+  }
+
+  /** localize() echoes the key when a string is missing — treat that as absent. */
+  private t(key: string, fallback: string, params?: Record<string, string>) {
+    const text = localize(this.hass, key, params);
+    return !text || text === key ? fallback : text;
+  }
+
+  /** Colour class for a preset: its key, or the display name it was given.
+
+   * A select exposing option_map hands over stable keys (off, heating, …).
+   * Without it, the only thing left is the display value, which is the
+   * user's own wording — so known labels are mapped back to a key, and
+   * anything else falls through to the neutral colour rather than breaking
+   * the class name.
+   */
+  private _presetClass(key: string, display: string): string {
+    const slug = (text: string) =>
+      text
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[̀-ͯ]/g, "")
+        .replace(/[^a-z0-9]+/g, "-");
+    const known = ["off", "heating", "cooling", "ventilation"];
+    if (known.includes(slug(key))) return slug(key);
+    const byLabel: Record<string, string> = {
+      eteint: "off",
+      arret: "off",
+      off: "off",
+      chauffage: "heating",
+      heat: "heating",
+      heating: "heating",
+      climatisation: "cooling",
+      clim: "cooling",
+      cool: "cooling",
+      cooling: "cooling",
+      ventilation: "ventilation",
+      ventilateur: "ventilation",
+      fan: "ventilation",
+    };
+    return byLabel[slug(display)] ?? slug(key);
   }
 
   private getEntityState(entityId?: string) {
@@ -177,7 +218,7 @@ class HomeShiftCard extends LitElement {
     });
   }
 
-  private onCircularSliderSelect(entityId: string, option: string) {
+  private onThermostatSelect(entityId: string, option: string) {
     this.hass.callService("select", "select_option", {
       entity_id: entityId,
       option,
@@ -196,40 +237,6 @@ class HomeShiftCard extends LitElement {
     const entityId = this._config.cover_entity;
     if (!entityId) return;
     this.hass.callService("cover", action, { entity_id: entityId });
-  }
-
-  private onOverrideDurationSelect(ev: Event) {
-    const entityId = this._config.override_duration_entity;
-    if (!entityId) return;
-    const value = Number((ev.target as HTMLSelectElement).value);
-    this.hass.callService("number", "set_value", {
-      entity_id: entityId,
-      value,
-    });
-  }
-
-  private onEarlySwitchSelect(ev: Event) {
-    const entityId = this._config.early_switch_entity;
-    if (!entityId) return;
-    const value = Number((ev.target as HTMLSelectElement).value);
-    this.hass.callService("number", "set_value", {
-      entity_id: entityId,
-      value,
-    });
-  }
-
-  private _formatRelativeTime(isoString?: string): string {
-    if (!isoString) return "";
-    const dt = new Date(isoString);
-    if (isNaN(dt.getTime())) return isoString;
-    const diffMs = dt.getTime() - Date.now();
-    const diffMin = Math.round(diffMs / 60000);
-    if (diffMin <= 0) return localize(this.hass, "card.past") || "passé";
-    if (diffMin < 60)
-      return `${localize(this.hass, "card.in") || "dans"} ${diffMin} min`;
-    const h = Math.floor(diffMin / 60);
-    const m = diffMin % 60;
-    return `${localize(this.hass, "card.in") || "dans"} ${h}h${m > 0 ? m.toString().padStart(2, "0") : ""}`;
   }
 
   private _formatAbsoluteTime(isoString?: string): string {
@@ -252,6 +259,111 @@ class HomeShiftCard extends LitElement {
     return `${dt.toLocaleDateString([], { month: "short", day: "numeric" })} ${timeStr}`;
   }
 
+  private _settingLabel(minutes: number): string {
+    if (!minutes) return localize(this.hass, "card.duration_off");
+    if (minutes < 60) return `${minutes} min`;
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return m ? `${h}h${String(m).padStart(2, "0")}` : `${h}h`;
+  }
+
+  private _clockIn(minutes: number): string {
+    const at = new Date(Date.now() + minutes * 60000);
+    return at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+
+  private _clockAt(isoString: string, shiftMinutes = 0): string {
+    const at = new Date(new Date(isoString).getTime() + shiftMinutes * 60000);
+    if (isNaN(at.getTime())) return isoString;
+    return at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+
+  /** Open one setting at a time, and fold it back once it is left alone. */
+  private _toggleSetting(name: "override" | "early") {
+    this._openSetting = this._openSetting === name ? null : name;
+    this._armSettingTimeout();
+  }
+
+  private _armSettingTimeout() {
+    clearTimeout(this._settingTimeout);
+    if (!this._openSetting) return;
+    this._settingTimeout = setTimeout(() => {
+      this._openSetting = null;
+    }, 6000);
+  }
+
+  private _stepSetting(
+    name: "override" | "early",
+    presets: { value: number }[],
+    current: number,
+    direction: number,
+  ) {
+    const entityId =
+      name === "override"
+        ? this._config.override_duration_entity
+        : this._config.early_switch_entity;
+    if (!entityId) return;
+    const values = presets.map((preset) => preset.value);
+    // The stored value may sit between two presets; land on the neighbour in
+    // the direction asked for rather than on a preset index that never matches.
+    const index = values.findIndex((value) => value >= current);
+    const from = index === -1 ? values.length - 1 : index;
+    const next = Math.min(values.length - 1, Math.max(0, from + direction));
+    this._armSettingTimeout();
+    this.hass.callService("number", "set_value", {
+      entity_id: entityId,
+      value: values[next],
+    });
+  }
+
+  private _renderSetting(
+    name: "override" | "early",
+    icon: string,
+    label: string,
+    effect: string,
+    presets: { value: number }[],
+    current: number,
+  ) {
+    const open = this._openSetting === name;
+    return html`<div class="setting ${open ? "open" : ""}">
+      <button
+        class="setting-head"
+        aria-expanded=${open ? "true" : "false"}
+        @click=${() => this._toggleSetting(name)}
+      >
+        <ha-icon icon="${icon}"></ha-icon>
+        <span class="setting-label">${label}</span>
+        <span class="setting-value ${current ? "set" : ""}"
+          >${this._settingLabel(current)}</span
+        >
+        <ha-icon class="chevron" icon="mdi:chevron-down"></ha-icon>
+      </button>
+      ${open
+        ? html`<div class="setting-body">
+            <div class="stepper">
+              <button
+                aria-label="-"
+                ?disabled=${current <= presets[0].value}
+                @click=${() =>
+                  this._stepSetting(name, presets, current, -1)}
+              >
+                −
+              </button>
+              <span class="stepper-value">${this._settingLabel(current)}</span>
+              <button
+                aria-label="+"
+                ?disabled=${current >= presets[presets.length - 1].value}
+                @click=${() => this._stepSetting(name, presets, current, 1)}
+              >
+                +
+              </button>
+            </div>
+            <p class="setting-effect">${effect}</p>
+          </div>`
+        : nothing}
+    </div>`;
+  }
+
   private _renderMain(
     thermo: any,
     day: any,
@@ -261,7 +373,6 @@ class HomeShiftCard extends LitElement {
     coverCloseTime?: string,
   ) {
     // Day mode options from option_map attribute (HomeShift integration ≥ 1.1.0).
-    // Falls back to options list if option_map is not yet available.
     const dayModeMap: Record<string, string> = day.attributes?.option_map ?? {};
     const dayEntries: [string, string][] =
       Object.keys(dayModeMap).length > 0
@@ -270,222 +381,195 @@ class HomeShiftCard extends LitElement {
             (o: string) => [o, o] as [string, string],
           );
 
-    // Thermostat mode options from option_map attribute (HomeShift integration ≥ 1.1.0).
-    // Falls back to attributes.options (first entry = "off" mode, rest = active modes).
+    // Thermostat presets, keyed so each can carry its own colour and its own
+    // translation regardless of the display values set in the integration.
     const thermoModeMap: Record<string, string> =
       thermo.attributes?.option_map ?? {};
-    const hasThermoMap = Object.keys(thermoModeMap).length > 0;
-
-    // Display value for the "off" key — sent to select.select_option when off is pressed.
-    // The internal key for the off mode is always "off" (THERMOSTAT_OFF_KEY in the integration).
-    const offDisplay: string = hasThermoMap
-      ? (thermoModeMap["off"] ?? thermo.attributes?.options?.[0] ?? "")
-      : (thermo.attributes?.options?.[0] ?? "");
-
-    // Options for the circular slider: off mode first, then active modes.
-    const thermoSliderOptions: string[] = hasThermoMap
-      ? [
-          offDisplay,
-          ...Object.entries(thermoModeMap)
-            .filter(([key]) => key !== "off")
-            .map(([, display]) => display),
-        ]
-      : (thermo.attributes?.options ?? []);
-
-    // Localized labels for the circular slider arc (translated in the card, regardless
-    // of the display values configured in the integration).
-    // Standard internal keys from HomeShift: heating, cooling, ventilation.
-    const THERMOSTAT_ACTIVE_KEYS = ["heating", "cooling", "ventilation"];
-    const thermoLocalizedLabels: string[] = hasThermoMap
-      ? [
-          localize(this.hass, "card.off") || offDisplay,
-          ...Object.keys(thermoModeMap)
-            .filter((key) => key !== "off")
-            .map((key) => localize(this.hass, `thermostat.${key}`) || key),
-        ]
-      : [
-          localize(this.hass, "card.off") ||
-            (thermo.attributes?.options?.[0] ?? ""),
-          ...THERMOSTAT_ACTIVE_KEYS.map(
-            (key) => localize(this.hass, `thermostat.${key}`) || key,
-          ),
-        ];
+    const thermoEntries: [string, string][] =
+      Object.keys(thermoModeMap).length > 0
+        ? (Object.entries(thermoModeMap) as [string, string][])
+        : (thermo.attributes?.options ?? []).map(
+            (o: string) => [o, o] as [string, string],
+          );
 
     const nextMode = this.getEntityState(this._config.next_mode_entity);
     const nextModeAt = this.getEntityState(this._config.next_mode_at_entity);
-    const currentEarlySwitch = Number(
+    const earlySwitch = Number(
       this.getEntityState(this._config.early_switch_entity)?.state ?? 0,
+    );
+    const override = Number(
+      this.getEntityState(this._config.override_duration_entity)?.state ?? 0,
     );
 
     const hasNextMode =
       nextMode?.state && nextMode.state !== "unknown" && nextMode.state !== "";
+    const nextModeName = hasNextMode ? nextMode!.state : "";
+    const hasNextAt =
+      nextModeAt?.state &&
+      nextModeAt.state !== "unknown" &&
+      nextModeAt.state !== "unavailable";
+
+    const overrideEffect = override
+      ? localize(this.hass, "card.override_effect", {
+          duration: this._settingLabel(override),
+          time: this._clockIn(override),
+        })
+      : localize(this.hass, "card.override_none");
+    const earlyEffect = !hasNextAt
+      ? localize(this.hass, "card.early_no_event")
+      : earlySwitch
+        ? localize(this.hass, "card.early_effect", {
+            mode: nextModeName,
+            time: this._clockAt(nextModeAt!.state),
+            scheduled: this._clockAt(nextModeAt!.state, earlySwitch),
+          })
+        : localize(this.hass, "card.early_none", {
+            mode: nextModeName,
+            time: this._clockAt(nextModeAt!.state),
+          });
 
     const hasCoverOpenTime =
       coverOpenTime && coverOpenTime !== "unknown" && coverOpenTime !== "unavailable";
     const hasCoverCloseTime =
       coverCloseTime && coverCloseTime !== "unknown" && coverCloseTime !== "unavailable";
-
     const canControlCover = Boolean(this._config.cover_entity);
+    // Past three, the names stop fitting on one line; the tooltip keeps them.
+    const coversSummary =
+      coversLeftOpen.length > 3
+        ? localize(this.hass, "card.covers_left_open_count", {
+            count: String(coversLeftOpen.length),
+          })
+        : localize(this.hass, "card.covers_left_open", {
+            covers: coversLeftOpen.join(", "),
+          });
+
+    const activeKey: string | undefined = thermo.attributes?.current_key;
 
     return html`
-      <div class="thermo-section">
-        ${hasCoverOpenTime || hasCoverCloseTime
-          ? html`<div class="cover-times">
-              ${hasCoverOpenTime
-                ? html`<div
-                    class="cover-time-row ${canControlCover ? "actionable" : ""}"
-                    title="${canControlCover
-                      ? localize(this.hass, "card.cover_open_action") ||
-                        "Open now"
-                      : localize(this.hass, "card.cover_open_time") ||
-                        "Cover opening time"}"
-                    @click=${() => this.onCoverAction("open_cover")}
-                  >
-                    <ha-icon icon="mdi:roller-shade"></ha-icon>
-                    <span>${coverOpenTime}</span>
-                  </div>`
-                : nothing}
-              ${hasCoverCloseTime
-                ? html`<div
-                    class="cover-time-row ${canControlCover ? "actionable" : ""}"
-                    title="${canControlCover
-                      ? localize(this.hass, "card.cover_close_action") ||
-                        "Close now"
-                      : localize(this.hass, "card.cover_close_time") ||
-                        "Cover closing time"}"
-                    @click=${() => this.onCoverAction("close_cover")}
-                  >
-                    <ha-icon icon="mdi:roller-shade-closed"></ha-icon>
-                    <span>${coverCloseTime}</span>
-                  </div>`
-                : nothing}
+      <div class="rows">
+        <div class="presets" role="group">
+          ${thermoEntries.map(([key, display]) => {
+            const active = activeKey ? key === activeKey : display === thermo.state;
+            return html`<button
+              class="preset preset--${this._presetClass(key, display)} ${active
+                ? "on"
+                : ""}"
+              @click=${() => this.onThermostatSelect(thermo.entity_id, display)}
+            >
+              ${this.t(`thermostat.${key}`, display)}
+            </button>`;
+          })}
+        </div>
+
+        <div class="row">
+          <span class="row-key">${localize(this.hass, "card.day_mode")}</span>
+          <select
+            .value=${day.state}
+            @change=${(e: Event) => this.onSelect(day.entity_id, e)}
+          >
+            ${dayEntries.map(
+              ([_key, display]) => html`<option
+                value="${display}"
+                ?selected=${display === day.state}
+              >
+                ${display}
+              </option>`,
+            )}
+          </select>
+        </div>
+
+        ${hasNextMode || hasNextAt
+          ? html`<div class="row">
+              <span class="row-key">${localize(this.hass, "card.next")}</span>
+              <span
+                >${nextModeName}${hasNextMode && hasNextAt ? " · " : ""}${hasNextAt
+                  ? this._formatAbsoluteTime(nextModeAt!.state)
+                  : ""}</span
+              >
             </div>`
           : nothing}
+
+        ${this._config.override_duration_entity
+          ? this._renderSetting(
+              "override",
+              "mdi:hand-back-left",
+              localize(this.hass, "card.override_label"),
+              overrideEffect,
+              HomeShiftCard.OVERRIDE_PRESETS,
+              override,
+            )
+          : nothing}
+        ${this._config.early_switch_entity
+          ? this._renderSetting(
+              "early",
+              "mdi:clock-fast",
+              localize(this.hass, "card.early_label"),
+              earlyEffect,
+              HomeShiftCard.EARLY_SWITCH_PRESETS,
+              earlySwitch,
+            )
+          : nothing}
+
+        ${hasCoverOpenTime || hasCoverCloseTime
+          ? html`<div class="row">
+              <span class="row-key">${localize(this.hass, "card.covers")}</span>
+              <span class="cover-times">
+                ${hasCoverOpenTime
+                  ? html`<button
+                      class="cover-time ${canControlCover ? "actionable" : ""}"
+                      title="${canControlCover
+                        ? localize(this.hass, "card.cover_open_action")
+                        : localize(this.hass, "card.cover_open_time")}"
+                      ?disabled=${!canControlCover}
+                      @click=${() => this.onCoverAction("open_cover")}
+                    >
+                      <ha-icon icon="mdi:roller-shade"></ha-icon>${coverOpenTime}
+                    </button>`
+                  : nothing}
+                ${hasCoverCloseTime
+                  ? html`<button
+                      class="cover-time ${canControlCover ? "actionable" : ""}"
+                      title="${canControlCover
+                        ? localize(this.hass, "card.cover_close_action")
+                        : localize(this.hass, "card.cover_close_time")}"
+                      ?disabled=${!canControlCover}
+                      @click=${() => this.onCoverAction("close_cover")}
+                    >
+                      <ha-icon icon="mdi:roller-shade-closed"></ha-icon
+                      >${coverCloseTime}
+                    </button>`
+                  : nothing}
+              </span>
+            </div>`
+          : nothing}
+
         ${heatProtectionActive || coversLeftOpen.length > 0
-          ? html`<div class="badge-stack">
+          ? html`<div class="alerts">
               ${heatProtectionActive
-                ? html`<div
-                    class="badge heat-protection-badge"
-                    title="${localize(
-                      this.hass,
-                      "card.heat_protection_active",
-                    ) || "Heat protection active"}"
-                  >
+                ? html`<span class="chip chip--heat">
                     <ha-icon icon="mdi:window-shutter"></ha-icon>
-                  </div>`
+                    ${localize(this.hass, "card.heat_protection_active")}
+                  </span>`
                 : nothing}
               ${coversLeftOpen.length > 0
-                ? html`<div
-                    class="badge covers-left-open-badge"
-                    title="${localize(
-                      this.hass,
-                      "card.covers_left_open",
-                      { covers: coversLeftOpen.join(", ") },
-                    )}"
+                ? html`<span
+                    class="chip chip--covers"
+                    title="${localize(this.hass, "card.covers_left_open", {
+                      covers: coversLeftOpen.join(", "),
+                    })}"
                   >
                     <ha-icon icon="mdi:window-shutter-alert"></ha-icon>
-                  </div>`
+                    ${coversSummary}
+                  </span>`
                 : nothing}
             </div>`
           : nothing}
-        <homeshift-circular-slider
-          .hass=${this.hass}
-          .entityId=${thermo.entity_id}
-          .currentValue=${thermo.state}
-          .options=${thermoSliderOptions}
-          .labels=${thermoLocalizedLabels}
-          @option-selected=${(e: any) =>
-            this.onCircularSliderSelect(thermo.entity_id, e.detail.option)}
-        ></homeshift-circular-slider>
-
-        <div class="next-info-group">
-          ${hasNextMode || nextModeAt?.state
-            ? html`<div class="next-info">
-                ${hasNextMode
-                  ? html`<span class="next-mode-state"
-                      >${nextMode!.state}</span
-                    >`
-                  : nothing}
-                ${nextModeAt?.state
-                  ? html`<span class="next-mode-at-state"
-                      >${this._formatAbsoluteTime(nextModeAt.state)}</span
-                    >`
-                  : nothing}
-              </div>`
-            : nothing}
-          ${this._config.early_switch_entity
-            ? html`<select
-                .value=${String(currentEarlySwitch)}
-                class="list-select list-select--early ${currentEarlySwitch !== 0
-                  ? "active"
-                  : ""}"
-                @change=${this.onEarlySwitchSelect}
-              >
-                ${HomeShiftCard.EARLY_SWITCH_PRESETS.map(
-                  ({ label, value }) =>
-                    html`<option
-                      value="${value}"
-                      ?selected=${currentEarlySwitch === value}
-                    >
-                      ${label}
-                    </option>`,
-                )}
-              </select>`
-            : nothing}
-        </div>
-
-        <div class="thermo-bottom">
-          <div class="bottom-controls">
-            <div class="day-section">
-              <select
-                .value=${day.state}
-                @change=${(e: Event) => this.onSelect(day.entity_id, e)}
-              >
-                ${dayEntries.map(
-                  ([_key, display]) =>
-                    html`<option
-                      value="${display}"
-                      ?selected=${display === day.state}
-                    >
-                      ${display}
-                    </option>`,
-                )}
-              </select>
-            </div>
-
-            ${(() => {
-              const currentOverride = Number(
-                this.getEntityState(this._config.override_duration_entity)
-                  ?.state ?? 0,
-              );
-              return html`<select
-                .value=${String(currentOverride)}
-                class="list-select list-select--override ${currentOverride !== 0
-                  ? "active"
-                  : ""}"
-                @change=${this.onOverrideDurationSelect}
-              >
-                ${HomeShiftCard.OVERRIDE_PRESETS.map(({ label, value }) => {
-                  const currentVal = currentOverride;
-                  return html`<option
-                    value="${value}"
-                    ?selected=${currentVal === value}
-                  >
-                    ${label}
-                  </option>`;
-                })}
-              </select>`;
-            })()}
-          </div>
-        </div>
       </div>
     `;
   }
-
   protected render() {
     if (!this.hass || !this._config) return nothing;
 
-    const title = this._config.name ?? localize(this.hass, "card.title");
 
     // Use real entities when available, fall back to stub data for the picker preview
     const dayRaw = this.getEntityState(this._config.day_mode_entity);
@@ -531,7 +615,7 @@ class HomeShiftCard extends LitElement {
     )?.state;
 
     return html`
-      <ha-card .header=${this._config.show_title ? title : undefined}>
+      <ha-card>
         <div class="container">
           ${this._renderMain(
             thermo,
@@ -548,277 +632,252 @@ class HomeShiftCard extends LitElement {
 
   static styles = css`
     ha-card {
-      padding: 8px;
+      padding: 12px;
       position: relative;
-      min-height: 240px;
-      text-align: center;
     }
 
     .container {
-      display: flex;
-      justify-content: center;
       width: 100%;
     }
 
-    /* SLIDER VIEW */
-    .thermo-section {
-      position: relative;
-      width: 100%;
-      max-width: 240px;
+    .rows {
       display: flex;
       flex-direction: column;
-      align-items: center;
     }
 
-    homeshift-circular-slider {
-      width: 100%;
-    }
-
-    .thermo-bottom {
-      position: absolute;
-      bottom: 16px;
-      left: 50%;
-      transform: translateX(-50%);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 8px;
-      z-index: 2;
-      width: 90%;
-    }
-
-    .off-row {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-    }
-
-    .bottom-controls {
-      flex: 1;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .day-section {
-      flex: 1;
-      min-width: 0;
-    }
-
-    .day-section select {
-      width: 100%;
-    }
-
-    .center-button {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 40px;
-      height: 40px;
-      border-radius: 50%;
+    /* Thermostat presets — one segmented control, one colour per mode. */
+    .presets {
+      display: grid;
+      grid-auto-flow: column;
+      grid-auto-columns: 1fr;
       border: 1px solid var(--divider-color, #ccc);
-      background: var(--card-background-color, #ffffff);
-      cursor: pointer;
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-      transition:
-        background 0.2s,
-        border-color 0.2s;
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 4px;
     }
 
-    .center-button ha-icon {
+    .preset {
+      border: 0;
+      border-left: 1px solid var(--divider-color, #ccc);
+      background: transparent;
       color: var(--secondary-text-color, #666);
-    }
-
-    .center-button.active {
-      background: var(--primary-color);
-      border-color: var(--primary-color);
-    }
-
-    .center-button.active ha-icon {
-      color: var(--text-primary-color, #fff);
-    }
-
-    hui-card {
-      --ha-card-box-shadow: none;
-      --ha-card-border-width: 0;
-    }
-
-    @keyframes fadeIn {
-      from {
-        opacity: 0;
-        transform: translateY(5px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-
-    /* UI ELEMENTS */
-    select {
-      padding: 8px;
-      border-radius: 6px;
-      border: 1px solid var(--divider-color, #ccc);
-      background: var(--card-background-color);
-      color: var(--primary-text-color);
-    }
-
-    .list-select {
-      flex-shrink: 0;
-      align-self: stretch;
-      padding: 0 8px;
-      border-radius: 6px;
-      border: 1px solid var(--divider-color, #ccc);
-      background: var(--card-background-color);
-      color: var(--primary-text-color);
       font-size: 13px;
+      font-family: inherit;
+      padding: 8px 4px;
       cursor: pointer;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
       transition:
         background 0.2s ease,
-        border-color 0.2s ease,
         color 0.2s ease;
     }
 
-    .list-select--override.active {
-      border-color: var(--primary-color);
-      background: var(--primary-color);
+    .preset:first-child {
+      border-left: 0;
+    }
+
+    .preset:hover {
+      background: var(--secondary-background-color, rgba(127, 127, 127, 0.12));
+    }
+
+    .preset.on {
+      background: var(--secondary-text-color, #666);
       color: var(--text-primary-color, #fff);
     }
 
-    .list-select--early.active {
-      border-color: var(--accent-color, var(--primary-color));
-      background: var(--accent-color, var(--primary-color));
-      color: var(--text-primary-color, #fff);
+    .preset--heating.on {
+      background: var(--state-climate-heat-color, #e24b4a);
     }
 
-    .list-select--early {
-      padding: 8px;
+    .preset--cooling.on {
+      background: var(--state-climate-cool-color, #378add);
     }
 
-    .next-info-group {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 6px;
-      z-index: 2;
-      text-align: center;
-      background: rgba(128, 128, 128, 0.12);
-      border: 1px solid var(--divider-color, rgba(0, 0, 0, 0.1));
-      border-radius: 10px;
-      padding: 6px 12px;
+    .preset--ventilation.on {
+      background: var(--state-fan-active-color, #1d9e75);
     }
 
-    .next-info {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 2px;
-      pointer-events: none;
-    }
-
-    .next-mode-state {
-      font-size: 13px;
-      font-weight: 600;
+    .preset--off.on {
+      background: var(--divider-color, #9e9e9e);
       color: var(--primary-text-color);
     }
 
-    .next-mode-at-state {
-      font-size: 11px;
-      color: var(--secondary-text-color);
-    }
-
-    .error {
-      color: var(--error-color);
-      padding: 16px;
-    }
-
-    .cover-times {
-      position: absolute;
-      right: 100%;
-      margin-right: 8px;
-      top: 4%;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      z-index: 2;
-      animation: fadeIn 0.3s ease;
-    }
-
-    .cover-time-row {
+    .row {
       display: flex;
       align-items: center;
-      gap: 4px;
-      padding: 2px 6px;
-      border-radius: 10px;
-      background: rgba(128, 128, 128, 0.12);
-      border: 1px solid var(--divider-color, rgba(0, 0, 0, 0.1));
-      font-size: 11px;
-      color: var(--secondary-text-color);
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 0;
+      border-top: 1px solid var(--divider-color, #e0e0e0);
+      font-size: 13px;
+    }
+
+    .row-key {
+      color: var(--secondary-text-color, #666);
+    }
+
+    /* Collapsed by default: the value is readable without opening anything. */
+    .setting {
+      border-top: 1px solid var(--divider-color, #e0e0e0);
+    }
+
+    .setting-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      padding: 8px 0;
+      border: 0;
+      background: transparent;
+      color: var(--primary-text-color);
+      font-size: 13px;
+      font-family: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .setting-head ha-icon {
+      --mdc-icon-size: 18px;
+      color: var(--secondary-text-color, #666);
+      flex-shrink: 0;
+    }
+
+    .setting-label {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
       white-space: nowrap;
     }
 
-    .cover-time-row.actionable {
-      cursor: pointer;
-      transition:
-        border-color 0.2s ease,
-        background 0.2s ease;
+    .setting-value {
+      color: var(--secondary-text-color, #666);
     }
 
-    .cover-time-row.actionable:hover {
-      border-color: var(--primary-color);
-      background: rgba(128, 128, 128, 0.22);
+    .setting-value.set {
+      color: var(--primary-text-color);
+      font-weight: 500;
     }
 
-    .cover-time-row ha-icon {
-      color: var(--secondary-text-color);
-      --mdi-icon-size: 14px;
+    .setting .chevron {
+      transition: transform 0.15s ease;
     }
 
-    /* Badges sit beside the dial and stack downwards, so heat protection
-       and covers left open can be raised at the same time without one
-       covering the other. */
-    .badge-stack {
-      position: absolute;
-      left: 100%;
-      margin-left: 8px;
-      top: 4%;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      z-index: 3;
+    .setting.open .chevron {
+      transform: rotate(180deg);
     }
 
-    .badge {
+    .setting-body {
+      padding: 0 0 10px 26px;
+      animation: fadeIn 0.15s ease;
+    }
+
+    .stepper {
       display: flex;
       align-items: center;
-      justify-content: center;
-      width: 36px;
-      height: 36px;
-      border-radius: 50%;
-      color: var(--text-primary-color, #fff);
+      gap: 10px;
+    }
+
+    .stepper button {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      border: 1px solid var(--divider-color, #ccc);
+      background: var(--card-background-color);
+      color: var(--primary-text-color);
+      font-size: 18px;
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    .stepper button:hover:not(:disabled) {
+      background: var(--secondary-background-color, rgba(127, 127, 127, 0.12));
+    }
+
+    .stepper button:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+
+    .stepper-value {
+      min-width: 64px;
+      text-align: center;
+      font-size: 15px;
+      font-weight: 500;
+    }
+
+    .setting-effect {
+      margin: 8px 0 0;
+      font-size: 12px;
+      line-height: 1.4;
+      color: var(--secondary-text-color, #666);
+    }
+
+    .cover-times {
+      display: flex;
+      gap: 6px;
+    }
+
+    .cover-time {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 8px;
+      border-radius: 8px;
+      border: 1px solid var(--divider-color, #ccc);
+      background: var(--card-background-color);
+      color: var(--primary-text-color);
+      font-size: 13px;
+      font-family: inherit;
+    }
+
+    .cover-time ha-icon {
+      --mdc-icon-size: 16px;
+      color: var(--secondary-text-color, #666);
+    }
+
+    .cover-time.actionable {
+      cursor: pointer;
+    }
+
+    .cover-time.actionable:hover {
+      border-color: var(--primary-color);
+    }
+
+    /* Alerts only exist while something is wrong; nothing is shown otherwise. */
+    .alerts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding-top: 10px;
+      border-top: 1px solid var(--divider-color, #e0e0e0);
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 8px;
+      border-radius: 8px;
+      font-size: 12px;
       animation: fadeIn 0.3s ease;
     }
 
-    .badge ha-icon {
-      color: var(--text-primary-color, #fff);
-      --mdi-icon-size: 20px;
+    .chip ha-icon {
+      --mdc-icon-size: 16px;
     }
 
-    .heat-protection-badge {
+    .chip--heat {
       background: var(--error-color, #e7973c);
-      pointer-events: none;
+      color: var(--text-primary-color, #fff);
     }
 
     /* Pulses between orange and yellow: a cover left up is something to act
-       on tonight, not a steady status. Hoverable, so the tooltip can name
-       the covers. */
-    .covers-left-open-badge {
+       on tonight, not a steady status. */
+    .chip--covers {
       background: var(--warning-color, #ff9800);
+      color: #412402;
       cursor: help;
       animation:
         fadeIn 0.3s ease,
@@ -837,12 +896,33 @@ class HomeShiftCard extends LitElement {
       }
     }
 
-    /* A blinking badge is exactly what reduced-motion asks us not to do;
+    /* A blinking chip is exactly what reduced-motion asks us not to do;
        the colour alone still reads as a warning. */
     @media (prefers-reduced-motion: reduce) {
-      .covers-left-open-badge {
+      .chip--covers {
         animation: fadeIn 0.3s ease;
       }
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(3px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    select {
+      padding: 6px 8px;
+      border-radius: 8px;
+      border: 1px solid var(--divider-color, #ccc);
+      background: var(--card-background-color);
+      color: var(--primary-text-color);
+      font-size: 13px;
+      font-family: inherit;
     }
   `;
 }
