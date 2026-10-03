@@ -129,3 +129,40 @@ describe("cover entity (B-2)", () => {
     expect(hass.callService).not.toHaveBeenCalled();
   });
 });
+
+describe("duration stepper", () => {
+  async function stepFrom(state: string, button: 0 | 1) {
+    const states = homeshiftStates();
+    states["number.homeshift_early_switch"].state = state;
+    const hass = makeHass(states);
+    const card = await renderCard(hass);
+    $$(card, "button.setting-head")[1].click();
+    await card.updateComplete;
+    $$(card, ".stepper button")[button].click();
+    return hass.callService;
+  }
+
+  it.each([
+    ["25", 1, 30],
+    ["25", 0, 15],
+    ["45", 1, 60],
+    ["45", 0, 30],
+  ] as const)("steps from %s min to the adjacent preset", async (state, button, value) => {
+    expect(await stepFrom(state, button)).toHaveBeenCalledWith(
+      "number",
+      "set_value",
+      { entity_id: "number.homeshift_early_switch", value },
+    );
+  });
+
+  it("does not step past the last preset", async () => {
+    const states = homeshiftStates();
+    states["number.homeshift_early_switch"].state = "300";
+    const card = await renderCard(makeHass(states));
+    $$(card, "button.setting-head")[1].click();
+    await card.updateComplete;
+    const [down, up] = $$(card, ".stepper button") as HTMLButtonElement[];
+    expect(up.disabled).toBe(true);
+    expect(down.disabled).toBe(false);
+  });
+});
