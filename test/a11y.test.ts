@@ -91,6 +91,15 @@ describe("covers left open chip (A-2, B-6)", () => {
 });
 
 describe("labels", () => {
+  it("labels the stepper buttons in French", async () => {
+    const card = await renderCard(makeHass(homeshiftStates(), "fr"));
+    $$(card, "button.setting-head")[1].click();
+    await card.updateComplete;
+    expect($(card, ".stepper button")?.getAttribute("aria-label")).toBe(
+      "Diminuer : Anticiper les événements",
+    );
+  });
+
   it("labels the day mode dropdown", async () => {
     const card = await renderCard(makeHass(homeshiftStates(), "fr"));
     expect($(card, "select")?.getAttribute("aria-label")).toBe("Mode du jour");
@@ -104,6 +113,12 @@ describe("labels", () => {
     heads[0].click();
     await card.updateComplete;
     expect(heads[0].getAttribute("aria-expanded")).toBe("true");
-    expect($(card, ".stepper")).not.toBeNull();
+    const [down, up] = $$(card, ".stepper button");
+    expect(down.getAttribute("aria-label")).toBe(
+      "Decrease: Keep my manual choice",
+    );
+    expect(up.getAttribute("aria-label")).toBe(
+      "Increase: Keep my manual choice",
+    );
   });
 });

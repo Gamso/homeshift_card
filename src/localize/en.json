@@ -18,6 +18,8 @@
     "next": "Next",
     "covers": "Covers",
     "duration_off": "No",
+    "decrease": "Decrease: {setting}",
+    "increase": "Increase: {setting}",
     "override_label": "Keep my manual choice",
     "override_none": "A manual change is replaced at the calendar's next pass.",
     "override_effect": "After a change by hand, the calendar waits {duration} — until {time} if you change it now.",
