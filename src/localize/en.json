@@ -23,7 +23,12 @@
   "editor": {
     "name": "Name",
     "day_mode_entity": "Day Mode Entity",
-    "hermostat_mode_tentity": "Thermostat Mode Entity",
+    "thermostat_mode_entity": "Thermostat Mode Entity",
+    "override_duration_entity": "Override Duration Entity",
+    "early_switch_entity": "Early Switch Entity",
+    "next_mode_entity": "Next Mode Entity",
+    "next_mode_at_entity": "Next Mode Time Entity",
+    "heat_protection_entity": "Heat Protection Entity",
     "cover_open_time_entity": "Cover Open Time Entity",
     "cover_close_time_entity": "Cover Close Time Entity",
     "cover_entity": "Cover Entity (manual open/close)",

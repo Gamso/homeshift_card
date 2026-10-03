@@ -3,22 +3,7 @@ import { property, state } from "lit/decorators.js";
 import { localize } from "../localize/localize";
 import "./circular-slider";
 import "./homeshift-card-editor";
-
-interface HomeShiftCardConfig {
-  name?: string;
-  day_mode_entity?: string;
-  thermostat_mode_entity?: string;
-  override_duration_entity?: string;
-  early_switch_entity?: string;
-  next_mode_entity?: string;
-  next_mode_at_entity?: string;
-  heat_protection_entity?: string;
-  cover_open_time_entity?: string;
-  cover_close_time_entity?: string;
-  cover_entity?: string;
-  covers_left_open_entity?: string;
-  show_title?: boolean;
-}
+import { ENTITY_FIELDS, HomeShiftCardConfig } from "../types";
 
 class HomeShiftCard extends LitElement {
   // Predefined override duration values in minutes (0 = disabled).
@@ -94,31 +79,14 @@ class HomeShiftCard extends LitElement {
     if (!config) {
       throw new Error("Missing configuration");
     }
-    this._config = {
+    const normalized: HomeShiftCardConfig = {
       name: config.name ?? "Thermostat",
-      day_mode_entity: config.day_mode_entity ?? "select.homeshift_day_mode",
-      thermostat_mode_entity:
-        config.thermostat_mode_entity ?? "select.homeshift_thermostat_mode",
-      override_duration_entity:
-        config.override_duration_entity ?? "number.homeshift_override_duration",
-      early_switch_entity:
-        config.early_switch_entity ?? "number.homeshift_early_switch",
-      next_mode_entity: config.next_mode_entity ?? "sensor.homeshift_next_mode",
-      next_mode_at_entity:
-        config.next_mode_at_entity ?? "sensor.homeshift_next_mode_at",
-      heat_protection_entity:
-        config.heat_protection_entity ??
-        "binary_sensor.homeshift_cover_heat_active",
-      cover_open_time_entity:
-        config.cover_open_time_entity ?? "sensor.homeshift_cover_open_time",
-      cover_close_time_entity:
-        config.cover_close_time_entity ?? "sensor.homeshift_cover_close_time",
-      cover_entity: config.cover_entity ?? "",
-      covers_left_open_entity:
-        config.covers_left_open_entity ??
-        "binary_sensor.homeshift_covers_left_open",
       show_title: config.show_title !== false,
     };
+    for (const field of ENTITY_FIELDS) {
+      normalized[field.key] = config[field.key] ?? field.default;
+    }
+    this._config = normalized;
   }
 
   public getCardSize(): number {
@@ -131,19 +99,9 @@ class HomeShiftCard extends LitElement {
     if (changedProps.has("hass")) {
       const oldHass = changedProps.get("hass") as any;
       if (!oldHass) return true;
-      const watchedEntities = [
-        this._config?.day_mode_entity,
-        this._config?.thermostat_mode_entity,
-        this._config?.override_duration_entity,
-        this._config?.early_switch_entity,
-        this._config?.next_mode_entity,
-        this._config?.next_mode_at_entity,
-        this._config?.heat_protection_entity,
-        this._config?.cover_open_time_entity,
-        this._config?.cover_close_time_entity,
-        this._config?.cover_entity,
-        this._config?.covers_left_open_entity,
-      ].filter(Boolean) as string[];
+      const watchedEntities = ENTITY_FIELDS.map(
+        (field) => this._config?.[field.key],
+      ).filter(Boolean) as string[];
       return watchedEntities.some(
         (id) => oldHass.states[id] !== this.hass.states[id],
       );

@@ -1,0 +1,88 @@
+/** Card configuration, shared by the card and its visual editor. */
+export interface HomeShiftCardConfig {
+  name?: string;
+  day_mode_entity?: string;
+  thermostat_mode_entity?: string;
+  override_duration_entity?: string;
+  early_switch_entity?: string;
+  next_mode_entity?: string;
+  next_mode_at_entity?: string;
+  heat_protection_entity?: string;
+  cover_open_time_entity?: string;
+  cover_close_time_entity?: string;
+  cover_entity?: string;
+  covers_left_open_entity?: string;
+  show_title?: boolean;
+}
+
+export type EntityConfigKey = {
+  [K in keyof HomeShiftCardConfig]-?: K extends `${string}_entity` ? K : never;
+}[keyof HomeShiftCardConfig];
+
+/**
+ * Every entity option, in editor order, with the domains its picker offers
+ * and the entity the HomeShift integration creates by default ("" = none).
+ * The editor is generated from this table so it cannot drift from the
+ * config keys the card reads.
+ */
+export const ENTITY_FIELDS: readonly {
+  key: EntityConfigKey;
+  domains: string[];
+  default: string;
+}[] = [
+  {
+    key: "day_mode_entity",
+    domains: ["select", "input_select"],
+    default: "select.homeshift_day_mode",
+  },
+  {
+    key: "thermostat_mode_entity",
+    domains: ["select", "input_select"],
+    default: "select.homeshift_thermostat_mode",
+  },
+  {
+    key: "override_duration_entity",
+    domains: ["number", "input_number"],
+    default: "number.homeshift_override_duration",
+  },
+  {
+    key: "early_switch_entity",
+    domains: ["number", "input_number"],
+    default: "number.homeshift_early_switch",
+  },
+  {
+    key: "next_mode_entity",
+    domains: ["sensor"],
+    default: "sensor.homeshift_next_mode",
+  },
+  {
+    key: "next_mode_at_entity",
+    domains: ["sensor"],
+    default: "sensor.homeshift_next_mode_at",
+  },
+  {
+    key: "heat_protection_entity",
+    domains: ["binary_sensor"],
+    default: "binary_sensor.homeshift_cover_heat_active",
+  },
+  {
+    key: "cover_open_time_entity",
+    domains: ["sensor"],
+    default: "sensor.homeshift_cover_open_time",
+  },
+  {
+    key: "cover_close_time_entity",
+    domains: ["sensor"],
+    default: "sensor.homeshift_cover_close_time",
+  },
+  {
+    key: "cover_entity",
+    domains: ["cover"],
+    default: "",
+  },
+  {
+    key: "covers_left_open_entity",
+    domains: ["binary_sensor"],
+    default: "binary_sensor.homeshift_covers_left_open",
+  },
+];
