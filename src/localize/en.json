@@ -34,5 +34,11 @@
     "cover_entity": "Cover Entity (manual open/close)",
     "covers_left_open_entity": "Covers Left Open Entity",
     "show_title": "Show title"
+  },
+  "preview": {
+    "home": "Home",
+    "work": "Work",
+    "remote": "Remote",
+    "away": "Away"
   }
 }

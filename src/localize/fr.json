@@ -34,5 +34,11 @@
     "cover_entity": "Entité volet (ouverture/fermeture manuelle)",
     "covers_left_open_entity": "Entité volets non fermés",
     "show_title": "Afficher le titre"
+  },
+  "preview": {
+    "home": "Maison",
+    "work": "Travail",
+    "remote": "Télétravail",
+    "away": "Absence"
   }
 }
