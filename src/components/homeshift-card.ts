@@ -40,19 +40,33 @@ class HomeShiftCard extends LitElement {
   /** Set by Home Assistant in the card picker and the editor preview. */
   @property({ type: Boolean }) public preview = false;
   @state() private _config!: HomeShiftCardConfig;
-  @state() private _tick = 0;
-  private _refreshInterval?: ReturnType<typeof setInterval>;
+  /** Bumped at midnight so the "Today" / "Tomorrow" prefixes roll over. */
+  @state() private _day = 0;
+  private _midnightTimer?: ReturnType<typeof setTimeout>;
 
   connectedCallback() {
     super.connectedCallback();
-    this._refreshInterval = setInterval(() => {
-      this._tick++;
-    }, 30000);
+    this._scheduleMidnightRefresh();
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
-    clearInterval(this._refreshInterval);
+    clearTimeout(this._midnightTimer);
+  }
+
+  /**
+   * Entity changes already trigger renders; the only time-dependent output
+   * is the day prefix of the next-mode time, which changes at midnight.
+   */
+  private _scheduleMidnightRefresh() {
+    clearTimeout(this._midnightTimer);
+    const now = new Date();
+    const nextMidnight = new Date(now);
+    nextMidnight.setHours(24, 0, 1, 0);
+    this._midnightTimer = setTimeout(() => {
+      this._day++;
+      this._scheduleMidnightRefresh();
+    }, nextMidnight.getTime() - now.getTime());
   }
 
   public static getStubConfig(): HomeShiftCardConfig {
@@ -98,7 +112,7 @@ class HomeShiftCard extends LitElement {
 
   protected shouldUpdate(changedProps: Map<string, unknown>): boolean {
     if (changedProps.has("_config") || changedProps.has("preview")) return true;
-    if (changedProps.has("_tick")) return true;
+    if (changedProps.has("_day")) return true;
     if (changedProps.has("hass")) {
       const oldHass = changedProps.get("hass") as any;
       if (!oldHass) return true;
@@ -142,14 +156,6 @@ class HomeShiftCard extends LitElement {
     this.hass.callService("select", "select_option", {
       entity_id: entityId,
       option,
-    });
-  }
-
-  private onOffButtonClick(entityId: string, offOption: string) {
-    if (!offOption) return;
-    this.hass.callService("select", "select_option", {
-      entity_id: entityId,
-      option: offOption,
     });
   }
 
@@ -201,20 +207,6 @@ class HomeShiftCard extends LitElement {
           </option>`,
       )}
     </select>`;
-  }
-
-  private _formatRelativeTime(isoString?: string): string {
-    if (!isoString) return "";
-    const dt = new Date(isoString);
-    if (isNaN(dt.getTime())) return isoString;
-    const diffMs = dt.getTime() - Date.now();
-    const diffMin = Math.round(diffMs / 60000);
-    if (diffMin <= 0) return localize(this.hass, "card.past");
-    if (diffMin < 60)
-      return `${localize(this.hass, "card.in")} ${diffMin} min`;
-    const h = Math.floor(diffMin / 60);
-    const m = diffMin % 60;
-    return `${localize(this.hass, "card.in")} ${h}h${m > 0 ? m.toString().padStart(2, "0") : ""}`;
   }
 
   private _formatAbsoluteTime(isoString?: string): string {
@@ -368,8 +360,6 @@ class HomeShiftCard extends LitElement {
             </div>`
           : nothing}
         <homeshift-circular-slider
-          .hass=${this.hass}
-          .entityId=${thermo.entity_id}
           .currentValue=${thermo.state}
           .options=${thermoSliderOptions}
           .labels=${thermoLocalizedLabels}
@@ -553,13 +543,6 @@ class HomeShiftCard extends LitElement {
       width: 90%;
     }
 
-    .off-row {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-    }
-
     .bottom-controls {
       flex: 1;
       display: flex;
@@ -574,40 +557,6 @@ class HomeShiftCard extends LitElement {
 
     .day-section select {
       width: 100%;
-    }
-
-    .center-button {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 40px;
-      height: 40px;
-      border-radius: 50%;
-      border: 1px solid var(--divider-color, #ccc);
-      background: var(--card-background-color, #ffffff);
-      cursor: pointer;
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-      transition:
-        background 0.2s,
-        border-color 0.2s;
-    }
-
-    .center-button ha-icon {
-      color: var(--secondary-text-color, #666);
-    }
-
-    .center-button.active {
-      background: var(--primary-color);
-      border-color: var(--primary-color);
-    }
-
-    .center-button.active ha-icon {
-      color: var(--text-primary-color, #fff);
-    }
-
-    hui-card {
-      --ha-card-box-shadow: none;
-      --ha-card-border-width: 0;
     }
 
     @keyframes fadeIn {
