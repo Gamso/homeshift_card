@@ -12,33 +12,12 @@ class HomeShiftCard extends LitElement {
   /** Minimum time the "sending" state of a cover button stays visible. */
   static COVER_FEEDBACK_MS = 600;
 
-  // Predefined override duration values in minutes (0 = disabled).
-  private static readonly OVERRIDE_PRESETS: { label: string; value: number }[] =
-    [
-      { label: "--", value: 0 },
-      { label: "15min", value: 15 },
-      { label: "30min", value: 30 },
-      { label: "1h", value: 60 },
-      { label: "2h", value: 120 },
-      { label: "4h", value: 240 },
-      { label: "8h", value: 480 },
-      { label: "12h", value: 720 },
-    ];
+  // Override duration steps in minutes (0 = disabled).
+  private static readonly OVERRIDE_PRESETS = [0, 15, 30, 60, 120, 240, 480, 720];
 
-  // Predefined early-switch anticipation values in minutes (0 = disabled).
-  private static readonly EARLY_SWITCH_PRESETS: {
-    label: string;
-    value: number;
-  }[] = [
-    { label: "--", value: 0 },
-    { label: "15min", value: 15 },
-    { label: "30min", value: 30 },
-    { label: "45min", value: 45 },
-    { label: "1h", value: 60 },
-    { label: "1h30", value: 90 },
-    { label: "2h", value: 120 },
-    { label: "3h", value: 180 },
-    { label: "4h", value: 240 },
+  // Early-switch anticipation steps in minutes (0 = disabled).
+  private static readonly EARLY_SWITCH_PRESETS = [
+    0, 15, 30, 45, 60, 90, 120, 180, 240,
   ];
 
   @property({ attribute: false }) public hass!: any;
@@ -351,25 +330,27 @@ class HomeShiftCard extends LitElement {
 
   private _stepSetting(
     name: "override" | "early",
-    presets: { value: number }[],
+    presets: number[],
     current: number,
-    direction: number,
+    direction: 1 | -1,
   ) {
     const entityId =
       name === "override"
         ? this._config.override_duration_entity
         : this._config.early_switch_entity;
     if (!entityId) return;
-    const values = presets.map((preset) => preset.value);
-    // The stored value may sit between two presets; land on the neighbour in
-    // the direction asked for rather than on a preset index that never matches.
-    const index = values.findIndex((value) => value >= current);
-    const from = index === -1 ? values.length - 1 : index;
-    const next = Math.min(values.length - 1, Math.max(0, from + direction));
+    // The stored value may sit between two presets (25 min set from the
+    // entity page): land on the nearest preset in the direction asked for,
+    // 30 going up and 15 going down.
+    const next =
+      direction > 0
+        ? presets.find((value) => value > current)
+        : [...presets].reverse().find((value) => value < current);
+    if (next === undefined) return;
     this._armSettingTimeout();
     this.hass.callService("number", "set_value", {
       entity_id: entityId,
-      value: values[next],
+      value: next,
     });
   }
 
@@ -384,7 +365,7 @@ class HomeShiftCard extends LitElement {
     icon: string,
     label: string,
     effect: string,
-    presets: { value: number }[],
+    presets: number[],
     current: number | undefined,
   ) {
     const open = current !== undefined && this._openSetting === name;
@@ -407,7 +388,7 @@ class HomeShiftCard extends LitElement {
             <div class="stepper">
               <button
                 aria-label="-"
-                ?disabled=${current <= presets[0].value}
+                ?disabled=${current <= presets[0]}
                 @click=${() =>
                   this._stepSetting(name, presets, current, -1)}
               >
@@ -416,7 +397,7 @@ class HomeShiftCard extends LitElement {
               <span class="stepper-value">${this._settingLabel(current)}</span>
               <button
                 aria-label="+"
-                ?disabled=${current >= presets[presets.length - 1].value}
+                ?disabled=${current >= presets[presets.length - 1]}
                 @click=${() => this._stepSetting(name, presets, current, 1)}
               >
                 +
