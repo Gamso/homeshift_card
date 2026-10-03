@@ -1,5 +1,5 @@
 import { LitElement, html, css, svg } from "lit";
-import { property, query } from "lit/decorators.js";
+import { property } from "lit/decorators.js";
 
 /* =======================
    CONFIGURATION
@@ -10,12 +10,6 @@ const CLICK_AREA_PADDING = 10;
 
 // 180° arc (opening at the bottom)
 const ARC_PATH = "M 30 150 A 85 85 0 1 1 170 150";
-
-// Angles used for click calculations
-const START_ANGLE = 34.2;
-const TOTAL_ARC_DEGREES = 180;
-const ARC_END_ANGLE = START_ANGLE - TOTAL_ARC_DEGREES;
-const ARC_END_ANGLE_POSITIVE = ARC_END_ANGLE + 360;
 
 /* =======================
    COMPONENT
@@ -30,14 +24,11 @@ const SEGMENT_COLORS = [
 ];
 
 export class HomeShiftCircularSlider extends LitElement {
-  @property({ attribute: false }) public hass!: any;
-  @property() public entityId!: string;
   @property() public currentValue!: string;
   @property({ type: Array }) public options: string[] = [];
   /** Optional display labels shown on the arc. Falls back to options[i] when not provided. */
   @property({ type: Array }) public labels: string[] = [];
   @property({ type: Number }) private selectedIndex = -1;
-  @query("svg") private _svg?: SVGSVGElement;
 
   /* =======================
      UTILS
@@ -65,44 +56,6 @@ export class HomeShiftCircularSlider extends LitElement {
     // Dasharray: "segment_length  large_gap"
     // Dashoffset: "-start_point" (negative shifts the stroke to the right)
     return [`${length} 10`, `-${start}`];
-  }
-
-  private _getPercentageFromEvent(e: MouseEvent): number {
-    if (!this._svg) return -1;
-
-    const rect = this._svg.getBoundingClientRect();
-    const x = (2 * (e.clientX - rect.left - rect.width / 2)) / rect.width;
-    const y = (2 * (e.clientY - rect.top - rect.height / 2)) / rect.height;
-
-    const angle = (Math.atan2(y, x) * 180) / Math.PI;
-
-    if (angle >= ARC_END_ANGLE && angle <= START_ANGLE) {
-      return (START_ANGLE - angle) / TOTAL_ARC_DEGREES;
-    }
-
-    if (angle >= ARC_END_ANGLE_POSITIVE) {
-      return (START_ANGLE + (360 - angle)) / TOTAL_ARC_DEGREES;
-    }
-
-    return -1;
-  }
-
-  private _onSvgClick(e: MouseEvent) {
-    const p = this._getPercentageFromEvent(e);
-    if (p < 0 || this.options.length === 0) return;
-
-    // Map percentage (0 to 1) directly to option index
-    const index = Math.floor(p * this.options.length);
-
-    const selectedIdx = Math.max(0, Math.min(index, this.options.length - 1));
-
-    this.dispatchEvent(
-      new CustomEvent("option-selected", {
-        detail: { option: this.options[selectedIdx] },
-        bubbles: true,
-        composed: true,
-      }),
-    );
   }
 
   /* =======================
