@@ -7,7 +7,12 @@ import { ENTITY_FIELDS, HomeShiftCardConfig } from "../types";
 import { formatMinutes, isUsable, numericState } from "../state";
 import { formatShortDate, formatTime } from "../time";
 
+type CoverAction = "open" | "close";
+
 class HomeShiftCard extends LitElement {
+  /** Minimum time the "sending" state of a cover row stays visible. */
+  static COVER_FEEDBACK_MS = 600;
+
   // Predefined override duration values in minutes (0 = disabled).
   private static readonly OVERRIDE_PRESETS: { label: string; value: number }[] =
     [
@@ -41,6 +46,8 @@ class HomeShiftCard extends LitElement {
   /** Set by Home Assistant in the card picker and the editor preview. */
   @property({ type: Boolean }) public preview = false;
   @state() private _config!: HomeShiftCardConfig;
+  /** Cover row whose service call is in flight. */
+  @state() private _coverPending?: CoverAction;
   /** Badge whose detail text is expanded (tap / keyboard), if any. */
   @state() private _openBadge?: "heat" | "covers";
   /** Bumped at midnight so the "Today" / "Tomorrow" prefixes roll over. */
@@ -114,7 +121,12 @@ class HomeShiftCard extends LitElement {
 
   protected shouldUpdate(changedProps: Map<string, unknown>): boolean {
     if (changedProps.has("_config") || changedProps.has("preview")) return true;
-    if (changedProps.has("_day") || changedProps.has("_openBadge")) return true;
+    if (
+      changedProps.has("_day") ||
+      changedProps.has("_openBadge") ||
+      changedProps.has("_coverPending")
+    )
+      return true;
     if (changedProps.has("hass")) {
       const oldHass = changedProps.get("hass") as any;
       if (!oldHass) return true;
@@ -161,10 +173,96 @@ class HomeShiftCard extends LitElement {
     });
   }
 
-  private onCoverAction(action: "open_cover" | "close_cover") {
-    const entityId = this._config.cover_entity;
-    if (!entityId || !isUsable(this.getEntityState(entityId))) return;
-    this.hass.callService("cover", action, { entity_id: entityId });
+  /**
+   * Service call behind the "open now" / "close now" rows, or undefined
+   * when the row must stay a plain label.
+   *
+   * Priority: a legacy `cover_entity`, when set, wins (cover.open_cover /
+   * close_cover on that cover, kept for existing dashboards); otherwise the
+   * integration's buttons (`open_covers_entity` / `close_covers_entity`)
+   * are pressed. A button's state is the time of its last press ("unknown"
+   * if never pressed), so only a missing or unavailable button disables it.
+   */
+  private _coverCall(
+    action: CoverAction,
+  ): { domain: string; service: string; entity_id: string } | undefined {
+    const coverId = this._config.cover_entity;
+    if (coverId) {
+      return isUsable(this.getEntityState(coverId))
+        ? { domain: "cover", service: `${action}_cover`, entity_id: coverId }
+        : undefined;
+    }
+    const buttonId =
+      action === "open"
+        ? this._config.open_covers_entity
+        : this._config.close_covers_entity;
+    const button = this.getEntityState(buttonId);
+    return button && button.state !== "unavailable"
+      ? { domain: "button", service: "press", entity_id: buttonId! }
+      : undefined;
+  }
+
+  private async onCoverAction(action: CoverAction) {
+    const call = this._coverCall(action);
+    if (!call || this._coverPending) return;
+    this._coverPending = action;
+    try {
+      // Keep the "sending" state visible briefly even when HA answers at
+      // once, so the tap gets a feedback.
+      await Promise.all([
+        this.hass.callService(call.domain, call.service, {
+          entity_id: call.entity_id,
+        }),
+        new Promise((resolve) =>
+          setTimeout(resolve, HomeShiftCard.COVER_FEEDBACK_MS),
+        ),
+      ]);
+    } catch (err: any) {
+      // Same toast Home Assistant uses for its own failed actions.
+      this.dispatchEvent(
+        new CustomEvent("hass-notification", {
+          detail: {
+            message: localize(this.hass, `card.cover_${action}_failed`, {
+              error: err?.message ?? String(err),
+            }),
+          },
+          bubbles: true,
+          composed: true,
+        }),
+      );
+    } finally {
+      this._coverPending = undefined;
+    }
+  }
+
+  private _renderCoverRow(action: CoverAction, time: string) {
+    const icon =
+      action === "open" ? "mdi:roller-shade" : "mdi:roller-shade-closed";
+    if (!this._coverCall(action)) {
+      return html`<div
+        class="cover-time-row"
+        title=${localize(this.hass, `card.cover_${action}_time`)}
+      >
+        <ha-icon icon=${icon}></ha-icon>
+        <span>${time}</span>
+      </div>`;
+    }
+    const pending = this._coverPending === action;
+    const label = localize(this.hass, `card.cover_${action}_action`, { time });
+    return html`<button
+      type="button"
+      class="cover-time-row actionable ${pending ? "pending" : ""}"
+      title=${label}
+      aria-label=${label}
+      aria-busy=${pending ? "true" : "false"}
+      ?disabled=${this._coverPending !== undefined}
+      @click=${() => this.onCoverAction(action)}
+    >
+      <ha-icon icon=${icon}></ha-icon>
+      <span
+        >${pending ? localize(this.hass, "card.cover_sending") : time}</span
+      >
+    </button>`;
   }
 
   private onPresetSelect(entityId: string, ev: Event) {
@@ -326,39 +424,15 @@ class HomeShiftCard extends LitElement {
     const hasCoverOpenTime = isUsable(coverOpenTime);
     const hasCoverCloseTime = isUsable(coverCloseTime);
 
-    // The integration exposes no cover entity: only a cover the user
-    // configured, and that exists and is reachable, makes the rows act.
-    const canControlCover = isUsable(
-      this.getEntityState(this._config.cover_entity),
-    );
-
     return html`
       <div class="thermo-section">
         ${hasCoverOpenTime || hasCoverCloseTime
           ? html`<div class="cover-times">
               ${hasCoverOpenTime
-                ? html`<div
-                    class="cover-time-row ${canControlCover ? "actionable" : ""}"
-                    title="${canControlCover
-                      ? localize(this.hass, "card.cover_open_action")
-                      : localize(this.hass, "card.cover_open_time")}"
-                    @click=${() => this.onCoverAction("open_cover")}
-                  >
-                    <ha-icon icon="mdi:roller-shade"></ha-icon>
-                    <span>${coverOpenTime}</span>
-                  </div>`
+                ? this._renderCoverRow("open", coverOpenTime!)
                 : nothing}
               ${hasCoverCloseTime
-                ? html`<div
-                    class="cover-time-row ${canControlCover ? "actionable" : ""}"
-                    title="${canControlCover
-                      ? localize(this.hass, "card.cover_close_action")
-                      : localize(this.hass, "card.cover_close_time")}"
-                    @click=${() => this.onCoverAction("close_cover")}
-                  >
-                    <ha-icon icon="mdi:roller-shade-closed"></ha-icon>
-                    <span>${coverCloseTime}</span>
-                  </div>`
+                ? this._renderCoverRow("close", coverCloseTime!)
                 : nothing}
             </div>`
           : nothing}
@@ -706,16 +780,52 @@ class HomeShiftCard extends LitElement {
       white-space: nowrap;
     }
 
+    button.cover-time-row {
+      font: inherit;
+      font-size: 11px;
+    }
+
     .cover-time-row.actionable {
       cursor: pointer;
       transition:
         border-color 0.2s ease,
-        background 0.2s ease;
+        background 0.2s ease,
+        opacity 0.2s ease;
     }
 
-    .cover-time-row.actionable:hover {
+    .cover-time-row.actionable:hover:not(:disabled) {
       border-color: var(--primary-color);
       background: rgba(128, 128, 128, 0.22);
+    }
+
+    .cover-time-row.actionable:focus-visible {
+      outline: 2px solid var(--primary-color);
+      outline-offset: 1px;
+    }
+
+    .cover-time-row.actionable:disabled {
+      cursor: progress;
+    }
+
+    .cover-time-row.pending {
+      border-color: var(--primary-color);
+      color: var(--primary-color);
+      animation: cover-pending 0.8s ease-in-out infinite alternate;
+    }
+
+    @keyframes cover-pending {
+      from {
+        opacity: 1;
+      }
+      to {
+        opacity: 0.5;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .cover-time-row.pending {
+        animation: none;
+      }
     }
 
     .cover-time-row ha-icon {
