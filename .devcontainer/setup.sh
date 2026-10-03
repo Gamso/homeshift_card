@@ -4,22 +4,22 @@ echo "Setting up Home Assistant development environment..."
 echo ""
 
 # Create config directories if they don't exist
-mkdir -p /config/www/homershift_card
+mkdir -p /config/www/homeshift_card
 mkdir -p /config/.storage
 mkdir -p /config/custom_components
 
 # Copy configuration.yaml from repo if not exists or is older
-if [ ! -f /config/configuration.yaml ] || [ /workspaces/homershift_card/.devcontainer/config/configuration.yaml -nt /config/configuration.yaml ]; then
+if [ ! -f /config/configuration.yaml ] || [ /workspaces/homeshift_card/.devcontainer/config/configuration.yaml -nt /config/configuration.yaml ]; then
     echo "📝 Copying configuration.yaml from repository..."
-    cp /workspaces/homershift_card/.devcontainer/config/configuration.yaml /config/configuration.yaml
+    cp /workspaces/homeshift_card/.devcontainer/config/configuration.yaml /config/configuration.yaml
     echo "   ✅ Configuration file updated!"
 fi
 
 # Copy scheduler storage file
-if [ -f /workspaces/homershift_card/.devcontainer/scheduler.storage ]; then
+if [ -f /workspaces/homeshift_card/.devcontainer/scheduler.storage ]; then
     echo "📋 Copying scheduler storage file..."
     mkdir -p /config/.storage
-    cp /workspaces/homershift_card/.devcontainer/scheduler.storage /config/.storage/scheduler.storage
+    cp /workspaces/homeshift_card/.devcontainer/scheduler.storage /config/.storage/scheduler.storage
     echo "   ✅ scheduler.storage file copied!"
 fi
 
@@ -38,10 +38,10 @@ else
 fi
 
 # Check if the dist folder has the card file
-if [ -f /workspaces/homershift_card/dist/homershift-card.js ]; then
-    echo "✅ Card file found in dist/ - copying to Home Assistant..."
-    cp /workspaces/homershift_card/dist/homershift-card.js /config/www/homershift_card/
-    echo "   Card copied successfully!"
+if [ -f /workspaces/homeshift_card/dist/homeshift-card.js ]; then
+    # dist/ is bind-mounted on /config/www/homeshift_card (devcontainer.json),
+    # so every rebuild is served without copying.
+    echo "✅ Card file found in dist/ (mounted as /local/homeshift_card/)"
     
     # Pre-configure the Lovelace resource
     echo "✅ Pre-configuring Lovelace resources..."
@@ -53,8 +53,8 @@ if [ -f /workspaces/homershift_card/dist/homershift-card.js ]; then
   "data": {
     "items": [
       {
-        "id": "homershift_card",
-        "url": "/local/homershift_card/homershift-card.js",
+        "id": "homeshift_card",
+        "url": "/local/homeshift_card/homeshift-card.js",
         "type": "module"
       },
       {
@@ -197,8 +197,8 @@ echo "   - Restart Home Assistant: Settings → System → Restart"
 echo ""
 echo "   Alternative: Manually add via UI:"
 echo "   - Click the 3 dots (top right) → Edit Dashboard → Add Card"
-echo "   - Scroll down and select 'Custom: Xiaomi Smart Pet Fountain Card'"
-echo "   - Choose entity: select.xiaomi_iv02_b820_mode"
+echo "   - Search for 'HomeShift Card' and select it"
+echo "   - The HomeShift entities are pre-filled"
 echo ""
 
 # Give a moment for Home Assistant to start writing logs

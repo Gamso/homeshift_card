@@ -16,7 +16,7 @@
   "postCreateCommand": "bash /workspaces/homeshift_card/.devcontainer/setup.sh",
   "mounts": [
     "source=${localWorkspaceFolder}/.devcontainer/config,target=/config,type=bind",
-    "source=${localWorkspaceFolder}/dist,target=/config/www/workspaces/homeshift_card,type=bind"
+    "source=${localWorkspaceFolder}/dist,target=/config/www/homeshift_card,type=bind"
   ],
   "customizations": {
     "vscode": {
