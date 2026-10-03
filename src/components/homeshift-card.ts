@@ -182,12 +182,12 @@ class HomeShiftCard extends LitElement {
     if (isNaN(dt.getTime())) return isoString;
     const diffMs = dt.getTime() - Date.now();
     const diffMin = Math.round(diffMs / 60000);
-    if (diffMin <= 0) return localize(this.hass, "card.past") || "passé";
+    if (diffMin <= 0) return localize(this.hass, "card.past");
     if (diffMin < 60)
-      return `${localize(this.hass, "card.in") || "dans"} ${diffMin} min`;
+      return `${localize(this.hass, "card.in")} ${diffMin} min`;
     const h = Math.floor(diffMin / 60);
     const m = diffMin % 60;
-    return `${localize(this.hass, "card.in") || "dans"} ${h}h${m > 0 ? m.toString().padStart(2, "0") : ""}`;
+    return `${localize(this.hass, "card.in")} ${h}h${m > 0 ? m.toString().padStart(2, "0") : ""}`;
   }
 
   private _formatAbsoluteTime(isoString?: string): string {
@@ -202,10 +202,10 @@ class HomeShiftCard extends LitElement {
       minute: "2-digit",
     });
     if (dt.toDateString() === now.toDateString()) {
-      return `${localize(this.hass, "card.today") || "Auj."} ${timeStr}`;
+      return `${localize(this.hass, "card.today")} ${timeStr}`;
     }
     if (dt.toDateString() === tomorrow.toDateString()) {
-      return `${localize(this.hass, "card.tomorrow") || "Dem."} ${timeStr}`;
+      return `${localize(this.hass, "card.tomorrow")} ${timeStr}`;
     }
     return `${dt.toLocaleDateString([], { month: "short", day: "numeric" })} ${timeStr}`;
   }
@@ -256,16 +256,17 @@ class HomeShiftCard extends LitElement {
     const THERMOSTAT_ACTIVE_KEYS = ["heating", "cooling", "ventilation"];
     const thermoLocalizedLabels: string[] = hasThermoMap
       ? [
-          localize(this.hass, "card.off") || offDisplay,
-          ...Object.keys(thermoModeMap)
-            .filter((key) => key !== "off")
-            .map((key) => localize(this.hass, `thermostat.${key}`) || key),
+          localize(this.hass, "card.off"),
+          ...Object.entries(thermoModeMap)
+            .filter(([key]) => key !== "off")
+            .map(([key, display]) =>
+              localize(this.hass, `thermostat.${key}`, undefined, display),
+            ),
         ]
       : [
-          localize(this.hass, "card.off") ||
-            (thermo.attributes?.options?.[0] ?? ""),
-          ...THERMOSTAT_ACTIVE_KEYS.map(
-            (key) => localize(this.hass, `thermostat.${key}`) || key,
+          localize(this.hass, "card.off"),
+          ...THERMOSTAT_ACTIVE_KEYS.map((key) =>
+            localize(this.hass, `thermostat.${key}`),
           ),
         ];
 
@@ -293,10 +294,8 @@ class HomeShiftCard extends LitElement {
                 ? html`<div
                     class="cover-time-row ${canControlCover ? "actionable" : ""}"
                     title="${canControlCover
-                      ? localize(this.hass, "card.cover_open_action") ||
-                        "Open now"
-                      : localize(this.hass, "card.cover_open_time") ||
-                        "Cover opening time"}"
+                      ? localize(this.hass, "card.cover_open_action")
+                      : localize(this.hass, "card.cover_open_time")}"
                     @click=${() => this.onCoverAction("open_cover")}
                   >
                     <ha-icon icon="mdi:roller-shade"></ha-icon>
@@ -307,10 +306,8 @@ class HomeShiftCard extends LitElement {
                 ? html`<div
                     class="cover-time-row ${canControlCover ? "actionable" : ""}"
                     title="${canControlCover
-                      ? localize(this.hass, "card.cover_close_action") ||
-                        "Close now"
-                      : localize(this.hass, "card.cover_close_time") ||
-                        "Cover closing time"}"
+                      ? localize(this.hass, "card.cover_close_action")
+                      : localize(this.hass, "card.cover_close_time")}"
                     @click=${() => this.onCoverAction("close_cover")}
                   >
                     <ha-icon icon="mdi:roller-shade-closed"></ha-icon>
@@ -327,7 +324,7 @@ class HomeShiftCard extends LitElement {
                     title="${localize(
                       this.hass,
                       "card.heat_protection_active",
-                    ) || "Heat protection active"}"
+                    )}"
                   >
                     <ha-icon icon="mdi:window-shutter"></ha-icon>
                   </div>`
@@ -450,31 +447,27 @@ class HomeShiftCard extends LitElement {
     const thermoRaw = this.getEntityState(this._config.thermostat_mode_entity);
 
     const day = dayRaw ?? {
-      entity_id: this._config.day_mode_entity ?? "select.homeshift_day_mode",
-      state: localize(this.hass, "preview.day_mode_state") || "Travail",
+      entity_id: this._config.day_mode_entity,
+      state: localize(this.hass, "preview.work"),
       attributes: {
-        options: ["Maison", "Travail", "Télétravail", "Absence"],
-        option_map: {
-          home: "Maison",
-          work: "Travail",
-          remote: "Télétravail",
-          away: "Absence",
-        },
+        option_map: Object.fromEntries(
+          ["home", "work", "remote", "away"].map((key) => [
+            key,
+            localize(this.hass, `preview.${key}`),
+          ]),
+        ),
       },
     };
 
     const thermo = thermoRaw ?? {
-      entity_id:
-        this._config.thermostat_mode_entity ??
-        "select.homeshift_thermostat_mode",
-      state: localize(this.hass, "preview.thermostat_state") || "Chauffage",
+      entity_id: this._config.thermostat_mode_entity,
+      state: localize(this.hass, "thermostat.heating"),
       attributes: {
-        options: ["Eteint", "Chauffage", "Climatisation", "Ventilation"],
         option_map: {
-          off: "Eteint",
-          heating: "Chauffage",
-          cooling: "Climatisation",
-          ventilation: "Ventilation",
+          off: localize(this.hass, "card.off"),
+          heating: localize(this.hass, "thermostat.heating"),
+          cooling: localize(this.hass, "thermostat.cooling"),
+          ventilation: localize(this.hass, "thermostat.ventilation"),
         },
       },
     };
