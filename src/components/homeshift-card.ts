@@ -5,6 +5,7 @@ import "./circular-slider";
 import "./homeshift-card-editor";
 import { ENTITY_FIELDS, HomeShiftCardConfig } from "../types";
 import { formatMinutes, isUsable, numericState } from "../state";
+import { formatShortDate, formatTime } from "../time";
 
 class HomeShiftCard extends LitElement {
   // Predefined override duration values in minutes (0 = disabled).
@@ -216,17 +217,14 @@ class HomeShiftCard extends LitElement {
     const now = new Date();
     const tomorrow = new Date(now);
     tomorrow.setDate(tomorrow.getDate() + 1);
-    const timeStr = dt.toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    const timeStr = formatTime(dt, this.hass?.locale);
     if (dt.toDateString() === now.toDateString()) {
       return `${localize(this.hass, "card.today")} ${timeStr}`;
     }
     if (dt.toDateString() === tomorrow.toDateString()) {
       return `${localize(this.hass, "card.tomorrow")} ${timeStr}`;
     }
-    return `${dt.toLocaleDateString([], { month: "short", day: "numeric" })} ${timeStr}`;
+    return `${formatShortDate(dt, this.hass?.locale)} ${timeStr}`;
   }
 
   private _renderMain(
