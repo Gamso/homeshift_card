@@ -17,12 +17,12 @@ describe("next mode time", () => {
       new Date(2026, 0, 11, 8, 0).toISOString(),
     );
     const card = await renderCard(makeHass(states));
-    expect($(card, ".next-mode-at-state")?.textContent).toMatch(/^Tomorrow /);
+    expect($(card, ".next-row")?.textContent).toContain("Tomorrow ");
     expect(vi.getTimerCount()).toBe(1);
 
     await vi.advanceTimersByTimeAsync(3 * 60 * 1000);
     await card.updateComplete;
-    expect($(card, ".next-mode-at-state")?.textContent).toMatch(/^Today /);
+    expect($(card, ".next-row")?.textContent).toContain("Today ");
 
     card.remove();
     expect(vi.getTimerCount()).toBe(0);
