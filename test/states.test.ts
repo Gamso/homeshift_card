@@ -107,3 +107,19 @@ describe("number dropdowns (B-5)", () => {
     });
   });
 });
+
+describe("cover entity (B-2)", () => {
+  it("is not part of the stub config", async () => {
+    const { HomeShiftCard } = await import("../src/components/homeshift-card");
+    expect(HomeShiftCard.getStubConfig()).not.toHaveProperty("cover_entity");
+  });
+
+  it("does not act on a configured but missing cover", async () => {
+    const hass = makeHass(homeshiftStates());
+    const card = await renderCard(hass, { cover_entity: "cover.nope" });
+    const row = $(card, ".cover-time-row")!;
+    expect(row.classList.contains("actionable")).toBe(false);
+    row.click();
+    expect(hass.callService).not.toHaveBeenCalled();
+  });
+});

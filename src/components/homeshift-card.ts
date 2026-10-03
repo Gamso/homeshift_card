@@ -85,7 +85,6 @@ class HomeShiftCard extends LitElement {
         "binary_sensor.homeshift_cover_heat_active",
       cover_open_time_entity: "sensor.homeshift_cover_open_time",
       cover_close_time_entity: "sensor.homeshift_cover_close_time",
-      cover_entity: "cover.homeshift_daily_covers",
       covers_left_open_entity: "binary_sensor.homeshift_covers_left_open",
       show_title: true,
     };
@@ -164,7 +163,7 @@ class HomeShiftCard extends LitElement {
 
   private onCoverAction(action: "open_cover" | "close_cover") {
     const entityId = this._config.cover_entity;
-    if (!entityId) return;
+    if (!entityId || !isUsable(this.getEntityState(entityId))) return;
     this.hass.callService("cover", action, { entity_id: entityId });
   }
 
@@ -327,7 +326,11 @@ class HomeShiftCard extends LitElement {
     const hasCoverOpenTime = isUsable(coverOpenTime);
     const hasCoverCloseTime = isUsable(coverCloseTime);
 
-    const canControlCover = Boolean(this._config.cover_entity);
+    // The integration exposes no cover entity: only a cover the user
+    // configured, and that exists and is reachable, makes the rows act.
+    const canControlCover = isUsable(
+      this.getEntityState(this._config.cover_entity),
+    );
 
     return html`
       <div class="thermo-section">
