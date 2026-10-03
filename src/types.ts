@@ -10,6 +10,11 @@ export interface HomeShiftCardConfig {
   heat_protection_entity?: string;
   cover_open_time_entity?: string;
   cover_close_time_entity?: string;
+  /** Button pressed by the "open now" row (HomeShift >= button platform). */
+  open_covers_entity?: string;
+  /** Button pressed by the "close now" row. */
+  close_covers_entity?: string;
+  /** Legacy: when set, the rows call cover.open/close_cover on it instead. */
   cover_entity?: string;
   covers_left_open_entity?: string;
   show_title?: boolean;
@@ -74,6 +79,16 @@ export const ENTITY_FIELDS: readonly {
     key: "cover_close_time_entity",
     domains: ["sensor"],
     default: "sensor.homeshift_cover_close_time",
+  },
+  {
+    key: "open_covers_entity",
+    domains: ["button"],
+    default: "button.homeshift_open_covers",
+  },
+  {
+    key: "close_covers_entity",
+    domains: ["button"],
+    default: "button.homeshift_close_covers",
   },
   {
     key: "cover_entity",

@@ -39,6 +39,12 @@ Set a temporary override for the thermostat mode. Choose a preset duration (15 m
 
 Advance the next scheduled mode change by a preset amount (15 min to 4 h). Useful when you arrive home earlier than planned. The dropdown highlights in the accent color when active.
 
+### Manual cover control
+
+The scheduled opening and closing times of the daily covers are shown beside the dial. When the HomeShift integration exposes its `button.homeshift_open_covers` / `button.homeshift_close_covers` entities (created when daily covers are configured), each time becomes a button: tap it, or focus it and press Enter, to open or close the covers right away. The row shows "Sending…" while Home Assistant handles the request, and a failure is reported in the usual Home Assistant notification toast. No confirmation is asked: the action is reversible with the other button. When the button entities are missing or unavailable the times stay plain labels.
+
+If the legacy `cover_entity` option is set, it takes priority over the buttons: the rows then call `cover.open_cover` / `cover.close_cover` on that entity, as in previous versions.
+
 ### Next mode display
 
 The center of the arc shows the name of the next scheduled mode and its scheduled time. The time refreshes automatically every 30 seconds and displays as a relative duration (e.g. "in 1h30") or an absolute time (Today / Tomorrow + HH:MM).
@@ -106,6 +112,9 @@ next_mode_at_entity: sensor.homeshift_next_mode_at
 | `early_switch_entity`      | string  | `number.homeshift_early_switch`      | Early switch number entity      |
 | `next_mode_entity`         | string  | `sensor.homeshift_next_mode`         | Next scheduled mode sensor      |
 | `next_mode_at_entity`      | string  | `sensor.homeshift_next_mode_at`      | Next scheduled time sensor      |
+| `open_covers_entity`       | string  | `button.homeshift_open_covers`       | Button pressed by the "open now" row  |
+| `close_covers_entity`      | string  | `button.homeshift_close_covers`      | Button pressed by the "close now" row |
+| `cover_entity`             | string  | _(none)_                             | Legacy: cover opened/closed by the rows; overrides the two buttons when set |
 
 ---
 

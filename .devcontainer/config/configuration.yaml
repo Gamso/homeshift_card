@@ -90,6 +90,25 @@ template:
           data:
             entity_id: input_number.homeshift_early_switch_backing
             value: "{{ value }}"
+  # Simulates button.homeshift_open_covers / button.homeshift_close_covers:
+  # the integration moves the daily covers; here a notification shows the press.
+  - button:
+      - name: "homeshift_open_covers"
+        unique_id: homeshift_open_covers
+        icon: mdi:roller-shade
+        press:
+          service: persistent_notification.create
+          data:
+            title: HomeShift
+            message: "Open covers pressed"
+      - name: "homeshift_close_covers"
+        unique_id: homeshift_close_covers
+        icon: mdi:roller-shade-closed
+        press:
+          service: persistent_notification.create
+          data:
+            title: HomeShift
+            message: "Close covers pressed"
   - sensor:
       - name: "homeshift_next_scan"
         unique_id: homeshift_next_scan
