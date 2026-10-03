@@ -4,6 +4,7 @@ import { localize } from "../localize/localize";
 import "./circular-slider";
 import "./homeshift-card-editor";
 import { ENTITY_FIELDS, HomeShiftCardConfig } from "../types";
+import { formatMinutes, isUsable, numericState } from "../state";
 
 class HomeShiftCard extends LitElement {
   // Predefined override duration values in minutes (0 = disabled).
@@ -36,6 +37,8 @@ class HomeShiftCard extends LitElement {
   ];
 
   @property({ attribute: false }) public hass!: any;
+  /** Set by Home Assistant in the card picker and the editor preview. */
+  @property({ type: Boolean }) public preview = false;
   @state() private _config!: HomeShiftCardConfig;
   @state() private _tick = 0;
   private _refreshInterval?: ReturnType<typeof setInterval>;
@@ -94,7 +97,7 @@ class HomeShiftCard extends LitElement {
   }
 
   protected shouldUpdate(changedProps: Map<string, unknown>): boolean {
-    if (changedProps.has("_config")) return true;
+    if (changedProps.has("_config") || changedProps.has("preview")) return true;
     if (changedProps.has("_tick")) return true;
     if (changedProps.has("hass")) {
       const oldHass = changedProps.get("hass") as any;
@@ -156,24 +159,48 @@ class HomeShiftCard extends LitElement {
     this.hass.callService("cover", action, { entity_id: entityId });
   }
 
-  private onOverrideDurationSelect(ev: Event) {
-    const entityId = this._config.override_duration_entity;
-    if (!entityId) return;
+  private onPresetSelect(entityId: string, ev: Event) {
     const value = Number((ev.target as HTMLSelectElement).value);
+    if (!Number.isFinite(value)) return;
     this.hass.callService("number", "set_value", {
       entity_id: entityId,
       value,
     });
   }
 
-  private onEarlySwitchSelect(ev: Event) {
-    const entityId = this._config.early_switch_entity;
-    if (!entityId) return;
-    const value = Number((ev.target as HTMLSelectElement).value);
-    this.hass.callService("number", "set_value", {
-      entity_id: entityId,
-      value,
-    });
+  /**
+   * Dropdown for a minutes number entity (override duration, early switch).
+   * Highlighted only for a real non-zero value; a value set outside the
+   * presets (e.g. 25 min from the entity page) gets its own option so the
+   * dropdown shows what is actually active. Disabled while unavailable.
+   */
+  private _renderPresetSelect(
+    entityId: string | undefined,
+    presets: { label: string; value: number }[],
+    modifierClass: string,
+  ) {
+    if (!entityId) return nothing;
+    const current = numericState(this.getEntityState(entityId));
+    const options =
+      current !== undefined && !presets.some((p) => p.value === current)
+        ? [...presets, { label: formatMinutes(current), value: current }].sort(
+            (a, b) => a.value - b.value,
+          )
+        : presets;
+    const active = current !== undefined && current !== 0;
+    return html`<select
+      .value=${current === undefined ? "" : String(current)}
+      class="list-select ${modifierClass} ${active ? "active" : ""}"
+      ?disabled=${current === undefined}
+      @change=${(e: Event) => this.onPresetSelect(entityId, e)}
+    >
+      ${options.map(
+        ({ label, value }) =>
+          html`<option value="${value}" ?selected=${current === value}>
+            ${label}
+          </option>`,
+      )}
+    </select>`;
   }
 
   private _formatRelativeTime(isoString?: string): string {
@@ -193,7 +220,7 @@ class HomeShiftCard extends LitElement {
   private _formatAbsoluteTime(isoString?: string): string {
     if (!isoString) return "";
     const dt = new Date(isoString);
-    if (isNaN(dt.getTime())) return isoString;
+    if (isNaN(dt.getTime())) return "";
     const now = new Date();
     const tomorrow = new Date(now);
     tomorrow.setDate(tomorrow.getDate() + 1);
@@ -272,17 +299,14 @@ class HomeShiftCard extends LitElement {
 
     const nextMode = this.getEntityState(this._config.next_mode_entity);
     const nextModeAt = this.getEntityState(this._config.next_mode_at_entity);
-    const currentEarlySwitch = Number(
-      this.getEntityState(this._config.early_switch_entity)?.state ?? 0,
-    );
+    // The next-mode sensors are unknown when no switch is scheduled.
+    const hasNextMode = isUsable(nextMode);
+    const nextModeAtText = isUsable(nextModeAt)
+      ? this._formatAbsoluteTime(nextModeAt.state)
+      : "";
 
-    const hasNextMode =
-      nextMode?.state && nextMode.state !== "unknown" && nextMode.state !== "";
-
-    const hasCoverOpenTime =
-      coverOpenTime && coverOpenTime !== "unknown" && coverOpenTime !== "unavailable";
-    const hasCoverCloseTime =
-      coverCloseTime && coverCloseTime !== "unknown" && coverCloseTime !== "unavailable";
+    const hasCoverOpenTime = isUsable(coverOpenTime);
+    const hasCoverCloseTime = isUsable(coverCloseTime);
 
     const canControlCover = Boolean(this._config.cover_entity);
 
@@ -354,39 +378,25 @@ class HomeShiftCard extends LitElement {
         ></homeshift-circular-slider>
 
         <div class="next-info-group">
-          ${hasNextMode || nextModeAt?.state
+          ${hasNextMode || nextModeAtText
             ? html`<div class="next-info">
                 ${hasNextMode
                   ? html`<span class="next-mode-state"
                       >${nextMode!.state}</span
                     >`
                   : nothing}
-                ${nextModeAt?.state
+                ${nextModeAtText
                   ? html`<span class="next-mode-at-state"
-                      >${this._formatAbsoluteTime(nextModeAt.state)}</span
+                      >${nextModeAtText}</span
                     >`
                   : nothing}
               </div>`
             : nothing}
-          ${this._config.early_switch_entity
-            ? html`<select
-                .value=${String(currentEarlySwitch)}
-                class="list-select list-select--early ${currentEarlySwitch !== 0
-                  ? "active"
-                  : ""}"
-                @change=${this.onEarlySwitchSelect}
-              >
-                ${HomeShiftCard.EARLY_SWITCH_PRESETS.map(
-                  ({ label, value }) =>
-                    html`<option
-                      value="${value}"
-                      ?selected=${currentEarlySwitch === value}
-                    >
-                      ${label}
-                    </option>`,
-                )}
-              </select>`
-            : nothing}
+          ${this._renderPresetSelect(
+            this._config.early_switch_entity,
+            HomeShiftCard.EARLY_SWITCH_PRESETS,
+            "list-select--early",
+          )}
         </div>
 
         <div class="thermo-bottom">
@@ -408,29 +418,11 @@ class HomeShiftCard extends LitElement {
               </select>
             </div>
 
-            ${(() => {
-              const currentOverride = Number(
-                this.getEntityState(this._config.override_duration_entity)
-                  ?.state ?? 0,
-              );
-              return html`<select
-                .value=${String(currentOverride)}
-                class="list-select list-select--override ${currentOverride !== 0
-                  ? "active"
-                  : ""}"
-                @change=${this.onOverrideDurationSelect}
-              >
-                ${HomeShiftCard.OVERRIDE_PRESETS.map(({ label, value }) => {
-                  const currentVal = currentOverride;
-                  return html`<option
-                    value="${value}"
-                    ?selected=${currentVal === value}
-                  >
-                    ${label}
-                  </option>`;
-                })}
-              </select>`;
-            })()}
+            ${this._renderPresetSelect(
+              this._config.override_duration_entity,
+              HomeShiftCard.OVERRIDE_PRESETS,
+              "list-select--override",
+            )}
           </div>
         </div>
       </div>
@@ -442,9 +434,32 @@ class HomeShiftCard extends LitElement {
 
     const title = this._config.name ?? localize(this.hass, "card.title");
 
-    // Use real entities when available, fall back to stub data for the picker preview
     const dayRaw = this.getEntityState(this._config.day_mode_entity);
     const thermoRaw = this.getEntityState(this._config.thermostat_mode_entity);
+
+    // Stub data is only for the card picker / editor preview: on a real
+    // dashboard a missing entity (typo, integration not loaded) must say so
+    // rather than show a card that looks functional.
+    if (!this.preview) {
+      const missing = [
+        [this._config.day_mode_entity, dayRaw],
+        [this._config.thermostat_mode_entity, thermoRaw],
+      ]
+        .filter(([, stateObj]) => !stateObj)
+        .map(([entityId]) => entityId || "?");
+      if (missing.length > 0) {
+        return html`
+          <ha-card .header=${this._config.show_title ? title : undefined}>
+            ${missing.map(
+              (entity) =>
+                html`<div class="error">
+                  ${localize(this.hass, "card.entity_not_found", { entity })}
+                </div>`,
+            )}
+          </ha-card>
+        `;
+      }
+    }
 
     const day = dayRaw ?? {
       entity_id: this._config.day_mode_entity,
