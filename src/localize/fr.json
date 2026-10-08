@@ -27,7 +27,22 @@
     "early_none": "{mode} commencera à l'heure prévue, {time}.",
     "early_effect": "{mode} commencera à {time} au lieu de {scheduled}.",
     "early_no_event": "Aucun événement prévu.",
-    "covers_left_open_count": "Non fermés : {count} volets"
+    "covers_left_open_count": "Non fermés : {count} volets",
+    "inhibit_label": "Pilotage auto des volets",
+    "inhibit_none": "Auto",
+    "inhibited_count": "{count} en pause",
+    "inhibit_forever": "Jusqu'à reprise",
+    "days_short": "j",
+    "inhibit_effect": "Pause de {duration} — jusqu'à {time} si tu l'actives maintenant.",
+    "inhibit_effect_forever": "Le volet reste en pause jusqu'à ce que tu le reprennes.",
+    "inhibited_until": "En pause jusqu'à {time}",
+    "inhibited_forever": "En pause jusqu'à reprise",
+    "pause": "Pause",
+    "resume": "Reprendre",
+    "resume_all": "Tout reprendre",
+    "covers_paused": "En pause : {covers}",
+    "covers_paused_count": "{count} volets en pause",
+    "inhibit_failed": "Échec de la mise en pause : {error}"
   },
   "thermostat": {
     "off": "Éteint",
@@ -49,7 +64,8 @@
     "open_covers_entity": "Bouton d'ouverture des volets",
     "close_covers_entity": "Bouton de fermeture des volets",
     "cover_entity": "Entité volet (ancienne option, prioritaire sur les boutons)",
-    "covers_left_open_entity": "Entité volets non fermés"
+    "covers_left_open_entity": "Entité volets non fermés",
+    "covers_inhibited_entity": "Entité volets en pause"
   },
   "preview": {
     "home": "Maison",

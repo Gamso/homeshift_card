@@ -7,6 +7,13 @@ import { formatMinutes, isUsable, numericState } from "../state";
 import { formatShortDate, formatTime } from "../time";
 
 type CoverAction = "open" | "close";
+type SettingName = "override" | "early" | "covers";
+
+/** Covers HomeShift drives, and the end of each running inhibition (null: until resumed). */
+interface CoverInhibitions {
+  managed: string[];
+  inhibited: Map<string, string | null>;
+}
 
 class HomeShiftCard extends LitElement {
   /** Minimum time the "sending" state of a cover button stays visible. */
@@ -20,11 +27,17 @@ class HomeShiftCard extends LitElement {
     0, 15, 30, 45, 60, 90, 120, 180, 240,
   ];
 
+  // How long a cover is paused for, in minutes (0 = until resumed).
+  private static readonly INHIBIT_PRESETS = [240, 1440, 2880, 4320, 10080, 0];
+  private static readonly INHIBIT_DEFAULT_INDEX = 1;
+
   @property({ attribute: false }) public hass!: any;
   /** Set by Home Assistant in the card picker and the editor preview. */
   @property({ type: Boolean }) public preview = false;
   @state() private _config!: HomeShiftCardConfig;
-  @state() private _openSetting: "override" | "early" | null = null;
+  @state() private _openSetting: SettingName | null = null;
+  /** Index in INHIBIT_PRESETS of the pause duration picked in the covers row. */
+  @state() private _inhibitIndex = HomeShiftCard.INHIBIT_DEFAULT_INDEX;
   /** Cover button whose service call is in flight. */
   @state() private _coverPending?: CoverAction;
   /** Whether the full list behind a "Not closed: N covers" chip is shown. */
@@ -75,6 +88,7 @@ class HomeShiftCard extends LitElement {
       cover_open_time_entity: "sensor.homeshift_cover_open_time",
       cover_close_time_entity: "sensor.homeshift_cover_close_time",
       covers_left_open_entity: "binary_sensor.homeshift_covers_left_open",
+      covers_inhibited_entity: "sensor.homeshift_covers_inhibited",
     };
   }
 
@@ -104,6 +118,7 @@ class HomeShiftCard extends LitElement {
     if (
       changedProps.has("_day") ||
       changedProps.has("_openSetting") ||
+      changedProps.has("_inhibitIndex") ||
       changedProps.has("_coversExpanded") ||
       changedProps.has("_coverPending")
     )
@@ -170,6 +185,195 @@ class HomeShiftCard extends LitElement {
       (id: string) =>
         this.hass?.states?.[id]?.attributes?.friendly_name ?? id,
     );
+  }
+
+  private _friendlyName(entityId: string): string {
+    return this.hass?.states?.[entityId]?.attributes?.friendly_name ?? entityId;
+  }
+
+  /**
+   * Every cover HomeShift drives, and the running inhibitions. An end
+   * already past is dropped here rather than waiting for the integration's
+   * next poll to forget it.
+   */
+  private getCoverInhibitions(): CoverInhibitions {
+    const attributes =
+      this.getEntityState(this._config?.covers_inhibited_entity)?.attributes ??
+      {};
+    const managed: string[] = Array.isArray(attributes.managed_covers)
+      ? attributes.managed_covers
+      : [];
+    const inhibited = new Map<string, string | null>();
+    const now = Date.now();
+    for (const [cover, until] of Object.entries(attributes.covers ?? {})) {
+      if (typeof until === "string" && new Date(until).getTime() <= now) {
+        continue;
+      }
+      inhibited.set(cover, typeof until === "string" ? until : null);
+    }
+    return { managed, inhibited };
+  }
+
+  /** Call a HomeShift cover service; show a refusal as Home Assistant's toast. */
+  private async _callInhibitService(service: string, data: object) {
+    this._armSettingTimeout();
+    try {
+      await this.hass.callService("homeshift", service, data);
+    } catch (err: any) {
+      this.dispatchEvent(
+        new CustomEvent("hass-notification", {
+          detail: {
+            message: localize(this.hass, "card.inhibit_failed", {
+              error: err?.message ?? String(err),
+            }),
+          },
+          bubbles: true,
+          composed: true,
+        }),
+      );
+    }
+  }
+
+  private _inhibitCover(entityId: string) {
+    const minutes = HomeShiftCard.INHIBIT_PRESETS[this._inhibitIndex];
+    this._callInhibitService("inhibit_covers", {
+      entity_id: [entityId],
+      ...(minutes ? { duration: { minutes } } : {}),
+    });
+  }
+
+  private _resumeCovers(entityIds?: string[]) {
+    this._callInhibitService(
+      "resume_covers",
+      entityIds ? { entity_id: entityIds } : {},
+    );
+  }
+
+  private _stepInhibit(direction: 1 | -1) {
+    const last = HomeShiftCard.INHIBIT_PRESETS.length - 1;
+    this._inhibitIndex = Math.min(
+      last,
+      Math.max(0, this._inhibitIndex + direction),
+    );
+    this._armSettingTimeout();
+  }
+
+  /** "4h", "3 d" / "3 j", or "Until resumed". */
+  private _inhibitLabel(minutes: number): string {
+    if (!minutes) return localize(this.hass, "card.inhibit_forever");
+    if (minutes < 1440) return formatMinutes(minutes);
+    return `${minutes / 1440} ${localize(this.hass, "card.days_short")}`;
+  }
+
+  private _inhibitEnd(until: string | null): string {
+    return until
+      ? localize(this.hass, "card.inhibited_until", {
+          time: this._formatAbsoluteTime(until),
+        })
+      : localize(this.hass, "card.inhibited_forever");
+  }
+
+  /** Collapsible row pausing the automation of chosen covers. */
+  private _renderCoverInhibition({ managed, inhibited }: CoverInhibitions) {
+    const open = this._openSetting === "covers";
+    const presets = HomeShiftCard.INHIBIT_PRESETS;
+    const minutes = presets[this._inhibitIndex];
+    const label = localize(this.hass, "card.inhibit_label");
+    const effect = minutes
+      ? localize(this.hass, "card.inhibit_effect", {
+          duration: this._inhibitLabel(minutes),
+          time: this._formatAbsoluteTime(
+            new Date(Date.now() + minutes * 60000).toISOString(),
+          ),
+        })
+      : localize(this.hass, "card.inhibit_effect_forever");
+    return html`<div class="setting ${open ? "open" : ""}">
+      <button
+        class="setting-head"
+        aria-expanded=${open ? "true" : "false"}
+        @click=${() => this._toggleSetting("covers")}
+      >
+        <ha-icon icon="mdi:window-shutter-cog"></ha-icon>
+        <span class="setting-label">${label}</span>
+        <span class="setting-value ${inhibited.size ? "set" : ""}"
+          >${inhibited.size
+            ? localize(this.hass, "card.inhibited_count", {
+                count: String(inhibited.size),
+              })
+            : localize(this.hass, "card.inhibit_none")}</span
+        >
+        <ha-icon class="chevron" icon="mdi:chevron-down"></ha-icon>
+      </button>
+      ${open
+        ? html`<div class="setting-body">
+            <div class="stepper">
+              <button
+                aria-label=${localize(this.hass, "card.decrease", {
+                  setting: label,
+                })}
+                ?disabled=${this._inhibitIndex <= 0}
+                @click=${() => this._stepInhibit(-1)}
+              >
+                −
+              </button>
+              <span class="stepper-value" aria-live="polite"
+                >${this._inhibitLabel(minutes)}</span
+              >
+              <button
+                aria-label=${localize(this.hass, "card.increase", {
+                  setting: label,
+                })}
+                ?disabled=${this._inhibitIndex >= presets.length - 1}
+                @click=${() => this._stepInhibit(1)}
+              >
+                +
+              </button>
+            </div>
+            <p class="setting-effect">${effect}</p>
+            <ul class="cover-list">
+              ${managed.map((cover) => {
+                const paused = inhibited.has(cover);
+                const name = this._friendlyName(cover);
+                const action = localize(
+                  this.hass,
+                  paused ? "card.resume" : "card.pause",
+                );
+                return html`<li class="cover-item ${paused ? "paused" : ""}">
+                  <span class="cover-name">
+                    ${name}
+                    <span class="cover-status"
+                      >${paused
+                        ? this._inhibitEnd(inhibited.get(cover) ?? null)
+                        : localize(this.hass, "card.inhibit_none")}</span
+                    >
+                  </span>
+                  <button
+                    type="button"
+                    class="cover-toggle"
+                    aria-label="${action} — ${name}"
+                    @click=${() =>
+                      paused
+                        ? this._resumeCovers([cover])
+                        : this._inhibitCover(cover)}
+                  >
+                    <ha-icon icon=${paused ? "mdi:play" : "mdi:pause"}></ha-icon>
+                    ${action}
+                  </button>
+                </li>`;
+              })}
+            </ul>
+            ${inhibited.size > 1
+              ? html`<button
+                  type="button"
+                  class="resume-all"
+                  @click=${() => this._resumeCovers()}
+                >
+                  ${localize(this.hass, "card.resume_all")}
+                </button>`
+              : nothing}
+          </div>`
+        : nothing}
+    </div>`;
   }
 
   private onSelect(entityId: string, ev: Event) {
@@ -315,7 +519,7 @@ class HomeShiftCard extends LitElement {
   }
 
   /** Open one setting at a time, and fold it back once it is left alone. */
-  private _toggleSetting(name: "override" | "early") {
+  private _toggleSetting(name: SettingName) {
     this._openSetting = this._openSetting === name ? null : name;
     this._armSettingTimeout();
   }
@@ -323,9 +527,11 @@ class HomeShiftCard extends LitElement {
   private _armSettingTimeout() {
     clearTimeout(this._settingTimeout);
     if (!this._openSetting) return;
+    // Picking covers one by one takes longer than nudging a stepper.
+    const delay = this._openSetting === "covers" ? 20000 : 6000;
     this._settingTimeout = setTimeout(() => {
       this._openSetting = null;
-    }, 6000);
+    }, delay);
   }
 
   private _stepSetting(
@@ -432,6 +638,7 @@ class HomeShiftCard extends LitElement {
     day: any,
     heatProtectionActive: boolean,
     coversLeftOpen: string[],
+    coverInhibitions: CoverInhibitions,
     coverOpenTime?: string,
     coverCloseTime?: string,
   ) {
@@ -500,6 +707,21 @@ class HomeShiftCard extends LitElement {
           count: String(coversLeftOpen.length),
         })
       : coversFull;
+
+    const pausedCovers = [...coverInhibitions.inhibited.keys()].map((id) =>
+      this._friendlyName(id),
+    );
+    const pausedSummary =
+      pausedCovers.length > 2
+        ? localize(this.hass, "card.covers_paused_count", {
+            count: String(pausedCovers.length),
+          })
+        : localize(this.hass, "card.covers_paused", {
+            covers: pausedCovers.join(", "),
+          });
+    const pausedDetail = [...coverInhibitions.inhibited.entries()]
+      .map(([id, until]) => `${this._friendlyName(id)} — ${this._inhibitEnd(until)}`)
+      .join("\n");
 
     const activeKey: string | undefined = thermo.attributes?.current_key;
     const thermoUsable = isUsable(thermo);
@@ -593,7 +815,13 @@ class HomeShiftCard extends LitElement {
             </div>`
           : nothing}
 
-        ${heatProtectionActive || coversLeftOpen.length > 0
+        ${coverInhibitions.managed.length > 0
+          ? this._renderCoverInhibition(coverInhibitions)
+          : nothing}
+
+        ${heatProtectionActive ||
+        coversLeftOpen.length > 0 ||
+        pausedCovers.length > 0
           ? html`<div class="alerts">
               ${heatProtectionActive
                 ? html`<span class="chip chip--heat">
@@ -619,6 +847,20 @@ class HomeShiftCard extends LitElement {
                   >
                     <ha-icon icon="mdi:window-shutter-alert"></ha-icon>
                     ${coversSummary}
+                  </button>`
+                : nothing}
+              ${pausedCovers.length > 0
+                ? html`<button
+                    type="button"
+                    class="chip chip--paused"
+                    title=${pausedDetail}
+                    @click=${() => {
+                      this._openSetting = "covers";
+                      this._armSettingTimeout();
+                    }}
+                  >
+                    <ha-icon icon="mdi:window-shutter-cog"></ha-icon>
+                    ${pausedSummary}
                   </button>`
                 : nothing}
             </div>
@@ -704,6 +946,7 @@ class HomeShiftCard extends LitElement {
             day,
             heatProtectionActive,
             this.getCoversLeftOpen(),
+            this.getCoverInhibitions(),
             coverOpenTime,
             coverCloseTime,
           )}
@@ -1022,6 +1265,86 @@ class HomeShiftCard extends LitElement {
     .chip--heat {
       background: var(--error-color, #e7973c);
       color: var(--text-primary-color, #fff);
+    }
+
+    /* A paused cover is a choice, not a fault: calm colour, no animation. */
+    .chip--paused {
+      border: 0;
+      font-family: inherit;
+      background: var(--secondary-background-color, rgba(127, 127, 127, 0.12));
+      color: var(--primary-text-color);
+      cursor: pointer;
+    }
+
+    .chip--paused ha-icon {
+      color: var(--secondary-text-color, #666);
+    }
+
+    .cover-list {
+      list-style: none;
+      margin: 8px 0 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .cover-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 13px;
+    }
+
+    .cover-name {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .cover-status {
+      font-size: 12px;
+      color: var(--secondary-text-color, #666);
+    }
+
+    .cover-item.paused .cover-status {
+      color: var(--primary-color);
+    }
+
+    .cover-toggle,
+    .resume-all {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+      padding: 4px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--divider-color, #ccc);
+      background: var(--card-background-color);
+      color: var(--primary-text-color);
+      font-size: 13px;
+      font-family: inherit;
+      cursor: pointer;
+    }
+
+    .cover-toggle ha-icon {
+      --mdc-icon-size: 16px;
+    }
+
+    .cover-toggle:hover,
+    .resume-all:hover {
+      border-color: var(--primary-color);
+    }
+
+    .cover-item.paused .cover-toggle {
+      border-color: var(--primary-color);
+      color: var(--primary-color);
+    }
+
+    .resume-all {
+      align-self: flex-start;
+      margin-top: 8px;
     }
 
     /* Pulses between orange and yellow: a cover left up is something to act

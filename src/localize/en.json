@@ -27,7 +27,22 @@
     "early_none": "{mode} will start at its scheduled time, {time}.",
     "early_effect": "{mode} will start at {time} instead of {scheduled}.",
     "early_no_event": "No event scheduled.",
-    "covers_left_open_count": "Not closed: {count} covers"
+    "covers_left_open_count": "Not closed: {count} covers",
+    "inhibit_label": "Cover automation",
+    "inhibit_none": "Auto",
+    "inhibited_count": "{count} paused",
+    "inhibit_forever": "Until resumed",
+    "days_short": "d",
+    "inhibit_effect": "Pause for {duration} — until {time} if you start it now.",
+    "inhibit_effect_forever": "The cover stays paused until you resume it.",
+    "inhibited_until": "Paused until {time}",
+    "inhibited_forever": "Paused until resumed",
+    "pause": "Pause",
+    "resume": "Resume",
+    "resume_all": "Resume all",
+    "covers_paused": "Paused: {covers}",
+    "covers_paused_count": "{count} covers paused",
+    "inhibit_failed": "Could not pause or resume the cover: {error}"
   },
   "thermostat": {
     "off": "Off",
@@ -49,7 +64,8 @@
     "open_covers_entity": "Open Covers Button",
     "close_covers_entity": "Close Covers Button",
     "cover_entity": "Cover Entity (legacy, overrides the buttons)",
-    "covers_left_open_entity": "Covers Left Open Entity"
+    "covers_left_open_entity": "Covers Left Open Entity",
+    "covers_inhibited_entity": "Paused covers entity"
   },
   "preview": {
     "home": "Home",

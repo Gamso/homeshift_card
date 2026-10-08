@@ -17,6 +17,8 @@ export interface HomeShiftCardConfig {
   /** Legacy: when set, the rows call cover.open/close_cover on it instead. */
   cover_entity?: string;
   covers_left_open_entity?: string;
+  /** HomeShift's covers_inhibited sensor: the cover automation pause row. */
+  covers_inhibited_entity?: string;
 }
 
 export type EntityConfigKey = {
@@ -98,5 +100,10 @@ export const ENTITY_FIELDS: readonly {
     key: "covers_left_open_entity",
     domains: ["binary_sensor"],
     default: "binary_sensor.homeshift_covers_left_open",
+  },
+  {
+    key: "covers_inhibited_entity",
+    domains: ["sensor"],
+    default: "sensor.homeshift_covers_inhibited",
   },
 ];

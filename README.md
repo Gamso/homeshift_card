@@ -52,9 +52,15 @@ The **Covers** row shows the scheduled opening and closing times of the daily co
 
 If the legacy `cover_entity` option is set, it takes priority over the buttons: the times then call `cover.open_cover` / `cover.close_cover` on that entity, as in previous versions.
 
+### Cover automation pause
+
+Keep one or more covers out of HomeShift's automation for a while — e.g. a bedroom kept dark for a few days. Open the **Cover automation** row, pick a duration (4 h to 7 days, or until resumed), then press **Pause** next to each cover to hold. A paused cover shows when it comes back; **Resume** (or **Resume all**) hands it back right away. A refused call is reported in the usual Home Assistant notification toast.
+
+Pausing or resuming never moves a cover: it simply skips, or rejoins, the next scheduled open/close (and the "open/close now" buttons skip it too). The row lists the covers of HomeShift's `sensor.homeshift_covers_inhibited` and is hidden when that entity is missing.
+
 ### Alerts
 
-At the bottom of the card, a chip appears while the heat protection keeps the covers down, and a blinking chip names the covers tonight's close had to leave open (window open). Past three covers the chip shows a count; tap it (or focus it and press Enter) to read the names. Nothing is shown while everything is in order.
+At the bottom of the card, a chip appears while the heat protection keeps the covers down, and a blinking chip names the covers tonight's close had to leave open (window open). Past three covers the chip shows a count; tap it (or focus it and press Enter) to read the names. A calm, non-blinking chip names the paused covers; tap it to open the pause row. Nothing is shown while everything is in order.
 
 ---
 
@@ -108,6 +114,7 @@ cover_close_time_entity: sensor.homeshift_cover_close_time
 open_covers_entity: button.homeshift_open_covers
 close_covers_entity: button.homeshift_close_covers
 covers_left_open_entity: binary_sensor.homeshift_covers_left_open
+covers_inhibited_entity: sensor.homeshift_covers_inhibited
 ```
 
 Every entity option defaults to the entity the HomeShift integration creates, so a plain `type: custom:homeshift-card` works with a default installation. Set an option to an empty string to hide the corresponding element. If the day mode or thermostat mode entity does not exist, the card shows an "Entity not found" message instead of the controls.
@@ -130,6 +137,7 @@ Every entity option defaults to the entity the HomeShift integration creates, so
 | `close_covers_entity`      | string  | `button.homeshift_close_covers`            | Button pressed by the closing time ("close now")                             |
 | `cover_entity`             | string  | _(none)_                                   | Legacy: cover opened/closed by the times; overrides the two buttons when set |
 | `covers_left_open_entity`  | string  | `binary_sensor.homeshift_covers_left_open` | "Not closed" chip                                                            |
+| `covers_inhibited_entity`  | string  | `sensor.homeshift_covers_inhibited`        | Cover automation pause row and "Paused" chip                                 |
 
 All options can also be set from the visual editor.
 
