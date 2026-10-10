@@ -2,70 +2,76 @@ import { LitElement, html, css, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 import { localize } from "../localize/localize";
 import "./homeshift-card-editor";
+import { ENTITY_FIELDS, HomeShiftCardConfig } from "../types";
+import { formatMinutes, isUsable, numericState } from "../state";
+import { formatShortDate, formatTime } from "../time";
 
-interface HomeShiftCardConfig {
-  name?: string;
-  day_mode_entity?: string;
-  thermostat_mode_entity?: string;
-  override_duration_entity?: string;
-  early_switch_entity?: string;
-  next_mode_entity?: string;
-  next_mode_at_entity?: string;
-  heat_protection_entity?: string;
-  cover_open_time_entity?: string;
-  cover_close_time_entity?: string;
-  cover_entity?: string;
-  covers_left_open_entity?: string;
+type CoverAction = "open" | "close";
+type SettingName = "override" | "early" | "covers";
+
+/** Covers HomeShift drives, and the end of each running inhibition (null: until resumed). */
+interface CoverInhibitions {
+  managed: string[];
+  inhibited: Map<string, string | null>;
 }
 
 class HomeShiftCard extends LitElement {
-  // Predefined override duration values in minutes (0 = disabled).
-  private static readonly OVERRIDE_PRESETS: { label: string; value: number }[] =
-    [
-      { label: "--", value: 0 },
-      { label: "15min", value: 15 },
-      { label: "30min", value: 30 },
-      { label: "1h", value: 60 },
-      { label: "2h", value: 120 },
-      { label: "4h", value: 240 },
-      { label: "8h", value: 480 },
-      { label: "12h", value: 720 },
-    ];
+  /** Minimum time the "sending" state of a cover button stays visible. */
+  static COVER_FEEDBACK_MS = 600;
 
-  // Predefined early-switch anticipation values in minutes (0 = disabled).
-  private static readonly EARLY_SWITCH_PRESETS: {
-    label: string;
-    value: number;
-  }[] = [
-    { label: "--", value: 0 },
-    { label: "15min", value: 15 },
-    { label: "30min", value: 30 },
-    { label: "45min", value: 45 },
-    { label: "1h", value: 60 },
-    { label: "1h30", value: 90 },
-    { label: "2h", value: 120 },
-    { label: "3h", value: 180 },
-    { label: "4h", value: 240 },
+  // Override duration steps in minutes (0 = disabled).
+  private static readonly OVERRIDE_PRESETS = [0, 15, 30, 60, 120, 240, 480, 720];
+
+  // Early-switch anticipation steps in minutes (0 = disabled).
+  private static readonly EARLY_SWITCH_PRESETS = [
+    0, 15, 30, 45, 60, 90, 120, 180, 240,
   ];
 
+  // How long a cover is paused for, in minutes (0 = until resumed).
+  private static readonly INHIBIT_PRESETS = [240, 1440, 2880, 4320, 10080, 0];
+  private static readonly INHIBIT_DEFAULT_INDEX = 1;
+
   @property({ attribute: false }) public hass!: any;
+  /** Set by Home Assistant in the card picker and the editor preview. */
+  @property({ type: Boolean }) public preview = false;
   @state() private _config!: HomeShiftCardConfig;
-  @state() private _tick = 0;
-  @state() private _openSetting: "override" | "early" | null = null;
-  private _refreshInterval?: ReturnType<typeof setInterval>;
+  @state() private _openSetting: SettingName | null = null;
+  /** Index in INHIBIT_PRESETS of the pause duration picked in the covers row. */
+  @state() private _inhibitIndex = HomeShiftCard.INHIBIT_DEFAULT_INDEX;
+  /** Cover button whose service call is in flight. */
+  @state() private _coverPending?: CoverAction;
+  /** Whether the full list behind a "Not closed: N covers" chip is shown. */
+  @state() private _coversExpanded = false;
+  /** Bumped at midnight so the "Today" / "Tomorrow" prefixes roll over. */
+  @state() private _day = 0;
+  private _midnightTimer?: ReturnType<typeof setTimeout>;
   private _settingTimeout?: ReturnType<typeof setTimeout>;
 
   connectedCallback() {
     super.connectedCallback();
-    this._refreshInterval = setInterval(() => {
-      this._tick++;
-    }, 30000);
+    this._scheduleMidnightRefresh();
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
-    clearInterval(this._refreshInterval);
+    clearTimeout(this._midnightTimer);
     clearTimeout(this._settingTimeout);
+  }
+
+  /**
+   * Entity changes already trigger renders, and so does opening a setting
+   * (its "until {time}" text is computed then); the only output that goes
+   * stale on its own is the day prefix of the next-mode time, at midnight.
+   */
+  private _scheduleMidnightRefresh() {
+    clearTimeout(this._midnightTimer);
+    const now = new Date();
+    const nextMidnight = new Date(now);
+    nextMidnight.setHours(24, 0, 1, 0);
+    this._midnightTimer = setTimeout(() => {
+      this._day++;
+      this._scheduleMidnightRefresh();
+    }, nextMidnight.getTime() - now.getTime());
   }
 
   public static getStubConfig(): HomeShiftCardConfig {
@@ -81,8 +87,8 @@ class HomeShiftCard extends LitElement {
         "binary_sensor.homeshift_cover_heat_active",
       cover_open_time_entity: "sensor.homeshift_cover_open_time",
       cover_close_time_entity: "sensor.homeshift_cover_close_time",
-      cover_entity: "cover.homeshift_daily_covers",
       covers_left_open_entity: "binary_sensor.homeshift_covers_left_open",
+      covers_inhibited_entity: "sensor.homeshift_covers_inhibited",
     };
   }
 
@@ -94,30 +100,13 @@ class HomeShiftCard extends LitElement {
     if (!config) {
       throw new Error("Missing configuration");
     }
-    this._config = {
+    const normalized: HomeShiftCardConfig = {
       name: config.name ?? "Thermostat",
-      day_mode_entity: config.day_mode_entity ?? "select.homeshift_day_mode",
-      thermostat_mode_entity:
-        config.thermostat_mode_entity ?? "select.homeshift_thermostat_mode",
-      override_duration_entity:
-        config.override_duration_entity ?? "number.homeshift_override_duration",
-      early_switch_entity:
-        config.early_switch_entity ?? "number.homeshift_early_switch",
-      next_mode_entity: config.next_mode_entity ?? "sensor.homeshift_next_mode",
-      next_mode_at_entity:
-        config.next_mode_at_entity ?? "sensor.homeshift_next_mode_at",
-      heat_protection_entity:
-        config.heat_protection_entity ??
-        "binary_sensor.homeshift_cover_heat_active",
-      cover_open_time_entity:
-        config.cover_open_time_entity ?? "sensor.homeshift_cover_open_time",
-      cover_close_time_entity:
-        config.cover_close_time_entity ?? "sensor.homeshift_cover_close_time",
-      cover_entity: config.cover_entity ?? "",
-      covers_left_open_entity:
-        config.covers_left_open_entity ??
-        "binary_sensor.homeshift_covers_left_open",
     };
+    for (const field of ENTITY_FIELDS) {
+      normalized[field.key] = config[field.key] ?? field.default;
+    }
+    this._config = normalized;
   }
 
   public getCardSize(): number {
@@ -125,36 +114,26 @@ class HomeShiftCard extends LitElement {
   }
 
   protected shouldUpdate(changedProps: Map<string, unknown>): boolean {
-    if (changedProps.has("_config")) return true;
-    if (changedProps.has("_tick")) return true;
-    if (changedProps.has("_openSetting")) return true;
+    if (changedProps.has("_config") || changedProps.has("preview")) return true;
+    if (
+      changedProps.has("_day") ||
+      changedProps.has("_openSetting") ||
+      changedProps.has("_inhibitIndex") ||
+      changedProps.has("_coversExpanded") ||
+      changedProps.has("_coverPending")
+    )
+      return true;
     if (changedProps.has("hass")) {
       const oldHass = changedProps.get("hass") as any;
       if (!oldHass) return true;
-      const watchedEntities = [
-        this._config?.day_mode_entity,
-        this._config?.thermostat_mode_entity,
-        this._config?.override_duration_entity,
-        this._config?.early_switch_entity,
-        this._config?.next_mode_entity,
-        this._config?.next_mode_at_entity,
-        this._config?.heat_protection_entity,
-        this._config?.cover_open_time_entity,
-        this._config?.cover_close_time_entity,
-        this._config?.cover_entity,
-        this._config?.covers_left_open_entity,
-      ].filter(Boolean) as string[];
+      const watchedEntities = ENTITY_FIELDS.map(
+        (field) => this._config?.[field.key],
+      ).filter(Boolean) as string[];
       return watchedEntities.some(
         (id) => oldHass.states[id] !== this.hass.states[id],
       );
     }
     return false;
-  }
-
-  /** localize() echoes the key when a string is missing — treat that as absent. */
-  private t(key: string, fallback: string, params?: Record<string, string>) {
-    const text = localize(this.hass, key, params);
-    return !text || text === key ? fallback : text;
   }
 
   /** Colour class for a preset: its key, or the display name it was given.
@@ -208,6 +187,195 @@ class HomeShiftCard extends LitElement {
     );
   }
 
+  private _friendlyName(entityId: string): string {
+    return this.hass?.states?.[entityId]?.attributes?.friendly_name ?? entityId;
+  }
+
+  /**
+   * Every cover HomeShift drives, and the running inhibitions. An end
+   * already past is dropped here rather than waiting for the integration's
+   * next poll to forget it.
+   */
+  private getCoverInhibitions(): CoverInhibitions {
+    const attributes =
+      this.getEntityState(this._config?.covers_inhibited_entity)?.attributes ??
+      {};
+    const managed: string[] = Array.isArray(attributes.managed_covers)
+      ? attributes.managed_covers
+      : [];
+    const inhibited = new Map<string, string | null>();
+    const now = Date.now();
+    for (const [cover, until] of Object.entries(attributes.covers ?? {})) {
+      if (typeof until === "string" && new Date(until).getTime() <= now) {
+        continue;
+      }
+      inhibited.set(cover, typeof until === "string" ? until : null);
+    }
+    return { managed, inhibited };
+  }
+
+  /** Call a HomeShift cover service; show a refusal as Home Assistant's toast. */
+  private async _callInhibitService(service: string, data: object) {
+    this._armSettingTimeout();
+    try {
+      await this.hass.callService("homeshift", service, data);
+    } catch (err: any) {
+      this.dispatchEvent(
+        new CustomEvent("hass-notification", {
+          detail: {
+            message: localize(this.hass, "card.inhibit_failed", {
+              error: err?.message ?? String(err),
+            }),
+          },
+          bubbles: true,
+          composed: true,
+        }),
+      );
+    }
+  }
+
+  private _inhibitCover(entityId: string) {
+    const minutes = HomeShiftCard.INHIBIT_PRESETS[this._inhibitIndex];
+    this._callInhibitService("inhibit_covers", {
+      entity_id: [entityId],
+      ...(minutes ? { duration: { minutes } } : {}),
+    });
+  }
+
+  private _resumeCovers(entityIds?: string[]) {
+    this._callInhibitService(
+      "resume_covers",
+      entityIds ? { entity_id: entityIds } : {},
+    );
+  }
+
+  private _stepInhibit(direction: 1 | -1) {
+    const last = HomeShiftCard.INHIBIT_PRESETS.length - 1;
+    this._inhibitIndex = Math.min(
+      last,
+      Math.max(0, this._inhibitIndex + direction),
+    );
+    this._armSettingTimeout();
+  }
+
+  /** "4h", "3 d" / "3 j", or "Until resumed". */
+  private _inhibitLabel(minutes: number): string {
+    if (!minutes) return localize(this.hass, "card.inhibit_forever");
+    if (minutes < 1440) return formatMinutes(minutes);
+    return `${minutes / 1440} ${localize(this.hass, "card.days_short")}`;
+  }
+
+  private _inhibitEnd(until: string | null): string {
+    return until
+      ? localize(this.hass, "card.inhibited_until", {
+          time: this._formatAbsoluteTime(until),
+        })
+      : localize(this.hass, "card.inhibited_forever");
+  }
+
+  /** Collapsible row pausing the automation of chosen covers. */
+  private _renderCoverInhibition({ managed, inhibited }: CoverInhibitions) {
+    const open = this._openSetting === "covers";
+    const presets = HomeShiftCard.INHIBIT_PRESETS;
+    const minutes = presets[this._inhibitIndex];
+    const label = localize(this.hass, "card.inhibit_label");
+    const effect = minutes
+      ? localize(this.hass, "card.inhibit_effect", {
+          duration: this._inhibitLabel(minutes),
+          time: this._formatAbsoluteTime(
+            new Date(Date.now() + minutes * 60000).toISOString(),
+          ),
+        })
+      : localize(this.hass, "card.inhibit_effect_forever");
+    return html`<div class="setting ${open ? "open" : ""}">
+      <button
+        class="setting-head"
+        aria-expanded=${open ? "true" : "false"}
+        @click=${() => this._toggleSetting("covers")}
+      >
+        <ha-icon icon="mdi:window-shutter-cog"></ha-icon>
+        <span class="setting-label">${label}</span>
+        <span class="setting-value ${inhibited.size ? "set" : ""}"
+          >${inhibited.size
+            ? localize(this.hass, "card.inhibited_count", {
+                count: String(inhibited.size),
+              })
+            : localize(this.hass, "card.inhibit_none")}</span
+        >
+        <ha-icon class="chevron" icon="mdi:chevron-down"></ha-icon>
+      </button>
+      ${open
+        ? html`<div class="setting-body">
+            <div class="stepper">
+              <button
+                aria-label=${localize(this.hass, "card.decrease", {
+                  setting: label,
+                })}
+                ?disabled=${this._inhibitIndex <= 0}
+                @click=${() => this._stepInhibit(-1)}
+              >
+                −
+              </button>
+              <span class="stepper-value" aria-live="polite"
+                >${this._inhibitLabel(minutes)}</span
+              >
+              <button
+                aria-label=${localize(this.hass, "card.increase", {
+                  setting: label,
+                })}
+                ?disabled=${this._inhibitIndex >= presets.length - 1}
+                @click=${() => this._stepInhibit(1)}
+              >
+                +
+              </button>
+            </div>
+            <p class="setting-effect">${effect}</p>
+            <ul class="cover-list">
+              ${managed.map((cover) => {
+                const paused = inhibited.has(cover);
+                const name = this._friendlyName(cover);
+                const action = localize(
+                  this.hass,
+                  paused ? "card.resume" : "card.pause",
+                );
+                return html`<li class="cover-item ${paused ? "paused" : ""}">
+                  <span class="cover-name">
+                    ${name}
+                    <span class="cover-status"
+                      >${paused
+                        ? this._inhibitEnd(inhibited.get(cover) ?? null)
+                        : localize(this.hass, "card.inhibit_none")}</span
+                    >
+                  </span>
+                  <button
+                    type="button"
+                    class="cover-toggle"
+                    aria-label="${action} — ${name}"
+                    @click=${() =>
+                      paused
+                        ? this._resumeCovers([cover])
+                        : this._inhibitCover(cover)}
+                  >
+                    <ha-icon icon=${paused ? "mdi:play" : "mdi:pause"}></ha-icon>
+                    ${action}
+                  </button>
+                </li>`;
+              })}
+            </ul>
+            ${inhibited.size > 1
+              ? html`<button
+                  type="button"
+                  class="resume-all"
+                  @click=${() => this._resumeCovers()}
+                >
+                  ${localize(this.hass, "card.resume_all")}
+                </button>`
+              : nothing}
+          </div>`
+        : nothing}
+    </div>`;
+  }
+
   private onSelect(entityId: string, ev: Event) {
     const target = ev.target as HTMLSelectElement;
     const option = target?.value;
@@ -225,61 +393,133 @@ class HomeShiftCard extends LitElement {
     });
   }
 
-  private onOffButtonClick(entityId: string, offOption: string) {
-    if (!offOption) return;
-    this.hass.callService("select", "select_option", {
-      entity_id: entityId,
-      option: offOption,
-    });
+  /**
+   * Service call behind the "open now" / "close now" buttons, or undefined
+   * when the cover time must stay a plain label.
+   *
+   * Priority: a legacy `cover_entity`, when set, wins (cover.open_cover /
+   * close_cover on that cover, kept for existing dashboards); otherwise the
+   * integration's buttons (`open_covers_entity` / `close_covers_entity`)
+   * are pressed. A button's state is the time of its last press ("unknown"
+   * if never pressed), so only a missing or unavailable button disables it.
+   */
+  private _coverCall(
+    action: CoverAction,
+  ): { domain: string; service: string; entity_id: string } | undefined {
+    const coverId = this._config.cover_entity;
+    if (coverId) {
+      return isUsable(this.getEntityState(coverId))
+        ? { domain: "cover", service: `${action}_cover`, entity_id: coverId }
+        : undefined;
+    }
+    const buttonId =
+      action === "open"
+        ? this._config.open_covers_entity
+        : this._config.close_covers_entity;
+    const button = this.getEntityState(buttonId);
+    return button && button.state !== "unavailable"
+      ? { domain: "button", service: "press", entity_id: buttonId! }
+      : undefined;
   }
 
-  private onCoverAction(action: "open_cover" | "close_cover") {
-    const entityId = this._config.cover_entity;
-    if (!entityId) return;
-    this.hass.callService("cover", action, { entity_id: entityId });
+  private async onCoverAction(action: CoverAction) {
+    const call = this._coverCall(action);
+    if (!call || this._coverPending) return;
+    this._coverPending = action;
+    try {
+      // Keep the "sending" state visible briefly even when HA answers at
+      // once, so the tap gets a feedback.
+      await Promise.all([
+        this.hass.callService(call.domain, call.service, {
+          entity_id: call.entity_id,
+        }),
+        new Promise((resolve) =>
+          setTimeout(resolve, HomeShiftCard.COVER_FEEDBACK_MS),
+        ),
+      ]);
+    } catch (err: any) {
+      // Same toast Home Assistant uses for its own failed actions.
+      this.dispatchEvent(
+        new CustomEvent("hass-notification", {
+          detail: {
+            message: localize(this.hass, `card.cover_${action}_failed`, {
+              error: err?.message ?? String(err),
+            }),
+          },
+          bubbles: true,
+          composed: true,
+        }),
+      );
+    } finally {
+      this._coverPending = undefined;
+    }
+  }
+
+  private _renderCoverTime(action: CoverAction, time: string) {
+    const icon =
+      action === "open" ? "mdi:roller-shade" : "mdi:roller-shade-closed";
+    if (!this._coverCall(action)) {
+      return html`<span
+        class="cover-time"
+        title=${localize(this.hass, `card.cover_${action}_time`)}
+      >
+        <ha-icon icon=${icon}></ha-icon>${time}
+      </span>`;
+    }
+    const pending = this._coverPending === action;
+    const label = localize(this.hass, `card.cover_${action}_action`, { time });
+    return html`<button
+      type="button"
+      class="cover-time actionable ${pending ? "pending" : ""}"
+      title=${label}
+      aria-label=${label}
+      aria-busy=${pending ? "true" : "false"}
+      ?disabled=${this._coverPending !== undefined}
+      @click=${() => this.onCoverAction(action)}
+    >
+      <ha-icon icon=${icon}></ha-icon>${pending
+        ? localize(this.hass, "card.cover_sending")
+        : time}
+    </button>`;
   }
 
   private _formatAbsoluteTime(isoString?: string): string {
     if (!isoString) return "";
     const dt = new Date(isoString);
-    if (isNaN(dt.getTime())) return isoString;
+    if (isNaN(dt.getTime())) return "";
     const now = new Date();
     const tomorrow = new Date(now);
     tomorrow.setDate(tomorrow.getDate() + 1);
-    const timeStr = dt.toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    const timeStr = formatTime(dt, this.hass?.locale);
     if (dt.toDateString() === now.toDateString()) {
-      return `${localize(this.hass, "card.today") || "Auj."} ${timeStr}`;
+      return `${localize(this.hass, "card.today")} ${timeStr}`;
     }
     if (dt.toDateString() === tomorrow.toDateString()) {
-      return `${localize(this.hass, "card.tomorrow") || "Dem."} ${timeStr}`;
+      return `${localize(this.hass, "card.tomorrow")} ${timeStr}`;
     }
-    return `${dt.toLocaleDateString([], { month: "short", day: "numeric" })} ${timeStr}`;
+    return `${formatShortDate(dt, this.hass?.locale)} ${timeStr}`;
   }
 
-  private _settingLabel(minutes: number): string {
+  private _settingLabel(minutes: number | undefined): string {
+    if (minutes === undefined) return localize(this.hass, "card.unavailable");
     if (!minutes) return localize(this.hass, "card.duration_off");
-    if (minutes < 60) return `${minutes} min`;
-    const h = Math.floor(minutes / 60);
-    const m = minutes % 60;
-    return m ? `${h}h${String(m).padStart(2, "0")}` : `${h}h`;
+    return formatMinutes(minutes);
   }
 
   private _clockIn(minutes: number): string {
-    const at = new Date(Date.now() + minutes * 60000);
-    return at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    return formatTime(
+      new Date(Date.now() + minutes * 60000),
+      this.hass?.locale,
+    );
   }
 
   private _clockAt(isoString: string, shiftMinutes = 0): string {
     const at = new Date(new Date(isoString).getTime() + shiftMinutes * 60000);
-    if (isNaN(at.getTime())) return isoString;
-    return at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    return formatTime(at, this.hass?.locale);
   }
 
   /** Open one setting at a time, and fold it back once it is left alone. */
-  private _toggleSetting(name: "override" | "early") {
+  private _toggleSetting(name: SettingName) {
     this._openSetting = this._openSetting === name ? null : name;
     this._armSettingTimeout();
   }
@@ -287,48 +527,59 @@ class HomeShiftCard extends LitElement {
   private _armSettingTimeout() {
     clearTimeout(this._settingTimeout);
     if (!this._openSetting) return;
+    // Picking covers one by one takes longer than nudging a stepper.
+    const delay = this._openSetting === "covers" ? 20000 : 6000;
     this._settingTimeout = setTimeout(() => {
       this._openSetting = null;
-    }, 6000);
+    }, delay);
   }
 
   private _stepSetting(
     name: "override" | "early",
-    presets: { value: number }[],
+    presets: number[],
     current: number,
-    direction: number,
+    direction: 1 | -1,
   ) {
     const entityId =
       name === "override"
         ? this._config.override_duration_entity
         : this._config.early_switch_entity;
     if (!entityId) return;
-    const values = presets.map((preset) => preset.value);
-    // The stored value may sit between two presets; land on the neighbour in
-    // the direction asked for rather than on a preset index that never matches.
-    const index = values.findIndex((value) => value >= current);
-    const from = index === -1 ? values.length - 1 : index;
-    const next = Math.min(values.length - 1, Math.max(0, from + direction));
+    // The stored value may sit between two presets (25 min set from the
+    // entity page): land on the nearest preset in the direction asked for,
+    // 30 going up and 15 going down.
+    const next =
+      direction > 0
+        ? presets.find((value) => value > current)
+        : [...presets].reverse().find((value) => value < current);
+    if (next === undefined) return;
     this._armSettingTimeout();
     this.hass.callService("number", "set_value", {
       entity_id: entityId,
-      value: values[next],
+      value: next,
     });
   }
 
+  /**
+   * Collapsible minutes setting. `current` is undefined while the number
+   * entity is unknown or unavailable: the value then reads "Unavailable",
+   * is not highlighted and the setting cannot be opened (no NaN, no
+   * stepping from a value that does not exist).
+   */
   private _renderSetting(
     name: "override" | "early",
     icon: string,
     label: string,
     effect: string,
-    presets: { value: number }[],
-    current: number,
+    presets: number[],
+    current: number | undefined,
   ) {
-    const open = this._openSetting === name;
+    const open = current !== undefined && this._openSetting === name;
     return html`<div class="setting ${open ? "open" : ""}">
       <button
         class="setting-head"
         aria-expanded=${open ? "true" : "false"}
+        ?disabled=${current === undefined}
         @click=${() => this._toggleSetting(name)}
       >
         <ha-icon icon="${icon}"></ha-icon>
@@ -342,17 +593,23 @@ class HomeShiftCard extends LitElement {
         ? html`<div class="setting-body">
             <div class="stepper">
               <button
-                aria-label="-"
-                ?disabled=${current <= presets[0].value}
+                aria-label=${localize(this.hass, "card.decrease", {
+                  setting: label,
+                })}
+                ?disabled=${current <= presets[0]}
                 @click=${() =>
                   this._stepSetting(name, presets, current, -1)}
               >
                 −
               </button>
-              <span class="stepper-value">${this._settingLabel(current)}</span>
+              <span class="stepper-value" aria-live="polite"
+                >${this._settingLabel(current)}</span
+              >
               <button
-                aria-label="+"
-                ?disabled=${current >= presets[presets.length - 1].value}
+                aria-label=${localize(this.hass, "card.increase", {
+                  setting: label,
+                })}
+                ?disabled=${current >= presets[presets.length - 1]}
                 @click=${() => this._stepSetting(name, presets, current, 1)}
               >
                 +
@@ -364,11 +621,24 @@ class HomeShiftCard extends LitElement {
     </div>`;
   }
 
+  /**
+   * Minutes held by a number entity, as `_renderSetting` expects them, or
+   * null when the setting gets no row at all: not configured, or configured
+   * but missing outside the card picker preview.
+   */
+  private _minutes(entityId?: string): number | undefined | null {
+    if (!entityId) return null;
+    const stateObj = this.getEntityState(entityId);
+    if (!stateObj) return this.preview ? 0 : null;
+    return numericState(stateObj);
+  }
+
   private _renderMain(
     thermo: any,
     day: any,
     heatProtectionActive: boolean,
     coversLeftOpen: string[],
+    coverInhibitions: CoverInhibitions,
     coverOpenTime?: string,
     coverCloseTime?: string,
   ) {
@@ -394,20 +664,16 @@ class HomeShiftCard extends LitElement {
 
     const nextMode = this.getEntityState(this._config.next_mode_entity);
     const nextModeAt = this.getEntityState(this._config.next_mode_at_entity);
-    const earlySwitch = Number(
-      this.getEntityState(this._config.early_switch_entity)?.state ?? 0,
-    );
-    const override = Number(
-      this.getEntityState(this._config.override_duration_entity)?.state ?? 0,
-    );
+    const earlySwitch = this._minutes(this._config.early_switch_entity);
+    const override = this._minutes(this._config.override_duration_entity);
 
-    const hasNextMode =
-      nextMode?.state && nextMode.state !== "unknown" && nextMode.state !== "";
+    // The next-mode sensors are unknown when no switch is scheduled.
+    const hasNextMode = isUsable(nextMode);
     const nextModeName = hasNextMode ? nextMode!.state : "";
-    const hasNextAt =
-      nextModeAt?.state &&
-      nextModeAt.state !== "unknown" &&
-      nextModeAt.state !== "unavailable";
+    const nextModeAtText = isUsable(nextModeAt)
+      ? this._formatAbsoluteTime(nextModeAt!.state)
+      : "";
+    const hasNextAt = nextModeAtText !== "";
 
     const overrideEffect = override
       ? localize(this.hass, "card.override_effect", {
@@ -428,35 +694,58 @@ class HomeShiftCard extends LitElement {
             time: this._clockAt(nextModeAt!.state),
           });
 
-    const hasCoverOpenTime =
-      coverOpenTime && coverOpenTime !== "unknown" && coverOpenTime !== "unavailable";
-    const hasCoverCloseTime =
-      coverCloseTime && coverCloseTime !== "unknown" && coverCloseTime !== "unavailable";
-    const canControlCover = Boolean(this._config.cover_entity);
-    // Past three, the names stop fitting on one line; the tooltip keeps them.
-    const coversSummary =
-      coversLeftOpen.length > 3
-        ? localize(this.hass, "card.covers_left_open_count", {
-            count: String(coversLeftOpen.length),
+    const hasCoverOpenTime = isUsable(coverOpenTime);
+    const hasCoverCloseTime = isUsable(coverCloseTime);
+    const coversFull = localize(this.hass, "card.covers_left_open", {
+      covers: coversLeftOpen.join(", "),
+    });
+    // Past three, the names stop fitting on one line: the chip shows a count
+    // and becomes a button that reveals the names (touch has no hover).
+    const coversTruncated = coversLeftOpen.length > 3;
+    const coversSummary = coversTruncated
+      ? localize(this.hass, "card.covers_left_open_count", {
+          count: String(coversLeftOpen.length),
+        })
+      : coversFull;
+
+    const pausedCovers = [...coverInhibitions.inhibited.keys()].map((id) =>
+      this._friendlyName(id),
+    );
+    const pausedSummary =
+      pausedCovers.length > 2
+        ? localize(this.hass, "card.covers_paused_count", {
+            count: String(pausedCovers.length),
           })
-        : localize(this.hass, "card.covers_left_open", {
-            covers: coversLeftOpen.join(", "),
+        : localize(this.hass, "card.covers_paused", {
+            covers: pausedCovers.join(", "),
           });
+    const pausedDetail = [...coverInhibitions.inhibited.entries()]
+      .map(([id, until]) => `${this._friendlyName(id)} — ${this._inhibitEnd(until)}`)
+      .join("\n");
 
     const activeKey: string | undefined = thermo.attributes?.current_key;
+    const thermoUsable = isUsable(thermo);
 
     return html`
       <div class="rows">
-        <div class="presets" role="group">
+        <div
+          class="presets"
+          role="group"
+          aria-label=${localize(this.hass, "card.thermostat_mode")}
+        >
           ${thermoEntries.map(([key, display]) => {
-            const active = activeKey ? key === activeKey : display === thermo.state;
+            const active =
+              thermoUsable &&
+              (activeKey ? key === activeKey : display === thermo.state);
             return html`<button
               class="preset preset--${this._presetClass(key, display)} ${active
                 ? "on"
                 : ""}"
+              aria-pressed=${active ? "true" : "false"}
+              ?disabled=${!thermoUsable}
               @click=${() => this.onThermostatSelect(thermo.entity_id, display)}
             >
-              ${this.t(`thermostat.${key}`, display)}
+              ${localize(this.hass, `thermostat.${key}`, undefined, display)}
             </button>`;
           })}
         </div>
@@ -464,7 +753,9 @@ class HomeShiftCard extends LitElement {
         <div class="row">
           <span class="row-key">${localize(this.hass, "card.day_mode")}</span>
           <select
+            aria-label=${localize(this.hass, "card.day_mode")}
             .value=${day.state}
+            ?disabled=${!isUsable(day)}
             @change=${(e: Event) => this.onSelect(day.entity_id, e)}
           >
             ${dayEntries.map(
@@ -479,17 +770,17 @@ class HomeShiftCard extends LitElement {
         </div>
 
         ${hasNextMode || hasNextAt
-          ? html`<div class="row">
+          ? html`<div class="row next-row">
               <span class="row-key">${localize(this.hass, "card.next")}</span>
               <span
-                >${nextModeName}${hasNextMode && hasNextAt ? " · " : ""}${hasNextAt
-                  ? this._formatAbsoluteTime(nextModeAt!.state)
-                  : ""}</span
+                >${nextModeName}${hasNextMode && hasNextAt
+                  ? " · "
+                  : ""}${nextModeAtText}</span
               >
             </div>`
           : nothing}
 
-        ${this._config.override_duration_entity
+        ${override !== null
           ? this._renderSetting(
               "override",
               "mdi:hand-back-left",
@@ -499,7 +790,7 @@ class HomeShiftCard extends LitElement {
               override,
             )
           : nothing}
-        ${this._config.early_switch_entity
+        ${earlySwitch !== null
           ? this._renderSetting(
               "early",
               "mdi:clock-fast",
@@ -515,35 +806,22 @@ class HomeShiftCard extends LitElement {
               <span class="row-key">${localize(this.hass, "card.covers")}</span>
               <span class="cover-times">
                 ${hasCoverOpenTime
-                  ? html`<button
-                      class="cover-time ${canControlCover ? "actionable" : ""}"
-                      title="${canControlCover
-                        ? localize(this.hass, "card.cover_open_action")
-                        : localize(this.hass, "card.cover_open_time")}"
-                      ?disabled=${!canControlCover}
-                      @click=${() => this.onCoverAction("open_cover")}
-                    >
-                      <ha-icon icon="mdi:roller-shade"></ha-icon>${coverOpenTime}
-                    </button>`
+                  ? this._renderCoverTime("open", coverOpenTime!)
                   : nothing}
                 ${hasCoverCloseTime
-                  ? html`<button
-                      class="cover-time ${canControlCover ? "actionable" : ""}"
-                      title="${canControlCover
-                        ? localize(this.hass, "card.cover_close_action")
-                        : localize(this.hass, "card.cover_close_time")}"
-                      ?disabled=${!canControlCover}
-                      @click=${() => this.onCoverAction("close_cover")}
-                    >
-                      <ha-icon icon="mdi:roller-shade-closed"></ha-icon
-                      >${coverCloseTime}
-                    </button>`
+                  ? this._renderCoverTime("close", coverCloseTime!)
                   : nothing}
               </span>
             </div>`
           : nothing}
 
-        ${heatProtectionActive || coversLeftOpen.length > 0
+        ${coverInhibitions.managed.length > 0
+          ? this._renderCoverInhibition(coverInhibitions)
+          : nothing}
+
+        ${heatProtectionActive ||
+        coversLeftOpen.length > 0 ||
+        pausedCovers.length > 0
           ? html`<div class="alerts">
               ${heatProtectionActive
                 ? html`<span class="chip chip--heat">
@@ -551,57 +829,103 @@ class HomeShiftCard extends LitElement {
                     ${localize(this.hass, "card.heat_protection_active")}
                   </span>`
                 : nothing}
-              ${coversLeftOpen.length > 0
-                ? html`<span
-                    class="chip chip--covers"
-                    title="${localize(this.hass, "card.covers_left_open", {
-                      covers: coversLeftOpen.join(", "),
-                    })}"
-                  >
+              ${coversLeftOpen.length > 0 && !coversTruncated
+                ? html`<span class="chip chip--covers">
                     <ha-icon icon="mdi:window-shutter-alert"></ha-icon>
                     ${coversSummary}
                   </span>`
                 : nothing}
-            </div>`
+              ${coversTruncated
+                ? html`<button
+                    type="button"
+                    class="chip chip--covers"
+                    title=${coversFull}
+                    aria-label=${coversFull}
+                    aria-expanded=${this._coversExpanded ? "true" : "false"}
+                    @click=${() =>
+                      (this._coversExpanded = !this._coversExpanded)}
+                  >
+                    <ha-icon icon="mdi:window-shutter-alert"></ha-icon>
+                    ${coversSummary}
+                  </button>`
+                : nothing}
+              ${pausedCovers.length > 0
+                ? html`<button
+                    type="button"
+                    class="chip chip--paused"
+                    title=${pausedDetail}
+                    @click=${() => {
+                      this._openSetting = "covers";
+                      this._armSettingTimeout();
+                    }}
+                  >
+                    <ha-icon icon="mdi:window-shutter-cog"></ha-icon>
+                    ${pausedSummary}
+                  </button>`
+                : nothing}
+            </div>
+            ${coversTruncated && this._coversExpanded
+              ? html`<p class="covers-detail">${coversFull}</p>`
+              : nothing}`
           : nothing}
       </div>
     `;
   }
+
   protected render() {
     if (!this.hass || !this._config) return nothing;
 
-
-    // Use real entities when available, fall back to stub data for the picker preview
     const dayRaw = this.getEntityState(this._config.day_mode_entity);
     const thermoRaw = this.getEntityState(this._config.thermostat_mode_entity);
 
+    // Stub data is only for the card picker / editor preview: on a real
+    // dashboard a missing entity (typo, integration not loaded) must say so
+    // rather than show a card that looks functional.
+    if (!this.preview) {
+      const missing = [
+        [this._config.day_mode_entity, dayRaw],
+        [this._config.thermostat_mode_entity, thermoRaw],
+      ]
+        .filter(([, stateObj]) => !stateObj)
+        .map(([entityId]) => entityId || "?");
+      if (missing.length > 0) {
+        return html`
+          <ha-card>
+            ${missing.map(
+              (entity) =>
+                html`<div class="error">
+                  ${localize(this.hass, "card.entity_not_found", { entity })}
+                </div>`,
+            )}
+          </ha-card>
+        `;
+      }
+    }
+
     const day = dayRaw ?? {
-      entity_id: this._config.day_mode_entity ?? "select.homeshift_day_mode",
-      state: localize(this.hass, "preview.day_mode_state") || "Travail",
+      entity_id: this._config.day_mode_entity,
+      state: localize(this.hass, "preview.work"),
       attributes: {
-        options: ["Maison", "Travail", "Télétravail", "Absence"],
-        option_map: {
-          home: "Maison",
-          work: "Travail",
-          remote: "Télétravail",
-          away: "Absence",
-        },
+        option_map: Object.fromEntries(
+          ["home", "work", "remote", "away"].map((key) => [
+            key,
+            localize(this.hass, `preview.${key}`),
+          ]),
+        ),
       },
     };
 
     const thermo = thermoRaw ?? {
-      entity_id:
-        this._config.thermostat_mode_entity ??
-        "select.homeshift_thermostat_mode",
-      state: localize(this.hass, "preview.thermostat_state") || "Chauffage",
+      entity_id: this._config.thermostat_mode_entity,
+      state: localize(this.hass, "thermostat.heating"),
       attributes: {
-        options: ["Eteint", "Chauffage", "Climatisation", "Ventilation"],
-        option_map: {
-          off: "Eteint",
-          heating: "Chauffage",
-          cooling: "Climatisation",
-          ventilation: "Ventilation",
-        },
+        option_map: Object.fromEntries(
+          ["off", "heating", "cooling", "ventilation"].map((key) => [
+            key,
+            localize(this.hass, `thermostat.${key}`),
+          ]),
+        ),
+        current_key: "heating",
       },
     };
 
@@ -622,6 +946,7 @@ class HomeShiftCard extends LitElement {
             day,
             heatProtectionActive,
             this.getCoversLeftOpen(),
+            this.getCoverInhibitions(),
             coverOpenTime,
             coverCloseTime,
           )}
@@ -681,6 +1006,19 @@ class HomeShiftCard extends LitElement {
       background: var(--secondary-background-color, rgba(127, 127, 127, 0.12));
     }
 
+    .preset:disabled {
+      cursor: default;
+      opacity: 0.6;
+    }
+
+    .preset:focus-visible,
+    .setting-head:focus-visible,
+    .stepper button:focus-visible,
+    .cover-time.actionable:focus-visible {
+      outline: 2px solid var(--primary-color);
+      outline-offset: -2px;
+    }
+
     .preset.on {
       background: var(--secondary-text-color, #666);
       color: var(--text-primary-color, #fff);
@@ -735,6 +1073,14 @@ class HomeShiftCard extends LitElement {
       font-family: inherit;
       text-align: left;
       cursor: pointer;
+    }
+
+    .setting-head:disabled {
+      cursor: default;
+    }
+
+    .setting-head:disabled .chevron {
+      visibility: hidden;
     }
 
     .setting-head ha-icon {
@@ -841,8 +1187,38 @@ class HomeShiftCard extends LitElement {
       cursor: pointer;
     }
 
-    .cover-time.actionable:hover {
+    .cover-time.actionable:hover:not(:disabled) {
       border-color: var(--primary-color);
+    }
+
+    .cover-time.actionable:disabled {
+      cursor: progress;
+    }
+
+    .cover-time.pending {
+      border-color: var(--primary-color);
+      color: var(--primary-color);
+      animation: cover-pending 0.8s ease-in-out infinite alternate;
+    }
+
+    @keyframes cover-pending {
+      from {
+        opacity: 1;
+      }
+      to {
+        opacity: 0.5;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .cover-time.pending {
+        animation: none;
+      }
+    }
+
+    .error {
+      color: var(--error-color);
+      padding: 4px;
     }
 
     /* Alerts only exist while something is wrong; nothing is shown otherwise. */
@@ -868,9 +1244,107 @@ class HomeShiftCard extends LitElement {
       --mdc-icon-size: 16px;
     }
 
+    button.chip {
+      border: 0;
+      font-family: inherit;
+      cursor: pointer;
+    }
+
+    button.chip:focus-visible {
+      outline: 2px solid var(--primary-color);
+      outline-offset: 2px;
+    }
+
+    .covers-detail {
+      margin: 6px 0 0;
+      font-size: 12px;
+      line-height: 1.4;
+      color: var(--primary-text-color);
+    }
+
     .chip--heat {
       background: var(--error-color, #e7973c);
       color: var(--text-primary-color, #fff);
+    }
+
+    /* A paused cover is a choice, not a fault: calm colour, no animation. */
+    .chip--paused {
+      border: 0;
+      font-family: inherit;
+      background: var(--secondary-background-color, rgba(127, 127, 127, 0.12));
+      color: var(--primary-text-color);
+      cursor: pointer;
+    }
+
+    .chip--paused ha-icon {
+      color: var(--secondary-text-color, #666);
+    }
+
+    .cover-list {
+      list-style: none;
+      margin: 8px 0 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .cover-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 13px;
+    }
+
+    .cover-name {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .cover-status {
+      font-size: 12px;
+      color: var(--secondary-text-color, #666);
+    }
+
+    .cover-item.paused .cover-status {
+      color: var(--primary-color);
+    }
+
+    .cover-toggle,
+    .resume-all {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+      padding: 4px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--divider-color, #ccc);
+      background: var(--card-background-color);
+      color: var(--primary-text-color);
+      font-size: 13px;
+      font-family: inherit;
+      cursor: pointer;
+    }
+
+    .cover-toggle ha-icon {
+      --mdc-icon-size: 16px;
+    }
+
+    .cover-toggle:hover,
+    .resume-all:hover {
+      border-color: var(--primary-color);
+    }
+
+    .cover-item.paused .cover-toggle {
+      border-color: var(--primary-color);
+      color: var(--primary-color);
+    }
+
+    .resume-all {
+      align-self: flex-start;
+      margin-top: 8px;
     }
 
     /* Pulses between orange and yellow: a cover left up is something to act
@@ -878,7 +1352,6 @@ class HomeShiftCard extends LitElement {
     .chip--covers {
       background: var(--warning-color, #ff9800);
       color: #412402;
-      cursor: help;
       animation:
         fadeIn 0.3s ease,
         covers-left-open-blink 1.2s ease-in-out infinite;

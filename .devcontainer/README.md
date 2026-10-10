@@ -22,10 +22,12 @@ Ce projet inclut une configuration DevContainer pour développer et tester une c
 
 ## Ressource de la carte
 
-La ressource est définie via YAML (`resource_mode: yaml` dans `configuration.yaml`) :
+Le dossier `dist/` est monté sur `/config/www/homeshift_card` et `setup.sh` enregistre la ressource dans `.storage/lovelace_resources` (dashboards en mode `storage`) :
 
 - URL: `/local/homeshift_card/homeshift-card.js`
 - Type: Module
+
+Après `npm run build` (ou pendant `npm run watch`), un rafraîchissement du navigateur suffit.
 
 ## Dashboard Lovelace
 
@@ -47,12 +49,12 @@ En production, les entités proviennent de l'intégration **HomeShift** (https:/
 
 - `select.homeshift_day_mode`: options configurables par l'utilisateur (défaut: Maison, Travail, Télétravail, Absence)
 - `select.homeshift_thermostat_mode`: options configurables par l'utilisateur (défaut: Eteint, Chauffage, Climatisation, Ventilation)
-- `number.override_duration`: durée (en minutes) avant que HomeShift reprenne les mises à jour automatiques
+- `number.homeshift_override_duration` / `number.homeshift_early_switch` : dérogation et anticipation, en minutes
+- `sensor.homeshift_next_mode` / `sensor.homeshift_next_mode_at` : prochain mode et son heure
+- `sensor.homeshift_cover_open_time` / `sensor.homeshift_cover_close_time`, `binary_sensor.homeshift_cover_heat_active`, `binary_sensor.homeshift_covers_left_open` : volets
+- `button.homeshift_open_covers` / `button.homeshift_close_covers` : ouverture / fermeture immédiate des volets
 
-> **Devcontainer** : en l'absence de l'intégration HomeShift, des entités `input_select` de substitution sont définies dans `configuration.yaml` :
->
-> - `input_select.homeshift_day_mode` : Maison, Travail, Télétravail, Absence
-> - `input_select.homeshift_thermostat_mode` : Eteint, Chauffage, Climatisation, Ventilation
+> **Devcontainer** : en l'absence de l'intégration HomeShift, ces entités sont simulées dans `configuration.yaml` par des entités `template` (mêmes identifiants) adossées à des `input_*` `..._backing` ; les boutons créent une notification persistante.
 
 Des entités `input_boolean` sont incluses pour tester le scheduler:
 

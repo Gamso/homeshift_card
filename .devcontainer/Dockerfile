@@ -9,4 +9,4 @@ RUN apk add --no-cache nodejs npm
 # The Home Assistant image already has an entrypoint that starts Home Assistant
 # We'll let it run in the background
 
-WORKDIR /workspaces/homershift_card
+WORKDIR /workspaces/homeshift_card
