@@ -10,7 +10,7 @@ A clean, compact Lovelace card for Home Assistant to control the **HomeShift** i
 
 ## Overview
 
-HomeShift Card gives you full control over your HomeShift-managed thermostat and daily schedule in one place: a compact list of labelled rows, with the less frequent settings folded away until you need them.
+HomeShift Card gives you full control over your HomeShift-managed thermostat and daily schedule in one place: a compact list of labelled rows, with the less frequent settings folded away until you need them. With the Scheduler integration, a panel that slides up over the card shows the schedules of each day mode as 24 h timelines, and edits them.
 
 ---
 
@@ -23,7 +23,7 @@ The first row is a segmented control with one button per thermostat mode; the ac
 | Mode        | Colour of the active button |
 | ----------- | --------------------------- |
 | Off         | Gray                        |
-| Heating     | Red (HA heating colour)     |
+| Heating     | Orange (HA heating colour)  |
 | Cooling     | Blue (HA cooling colour)    |
 | Ventilation | Green (HA fan colour)       |
 
@@ -60,13 +60,28 @@ Pausing or resuming never moves a cover: it simply skips, or rejoins, the next s
 
 ### Alerts
 
-At the bottom of the card, a chip appears while the heat protection keeps the covers down, and a blinking chip names the covers tonight's close had to leave open (window open). Past three covers the chip shows a count; tap it (or focus it and press Enter) to read the names. A calm, non-blinking chip names the paused covers; tap it to open the pause row. Nothing is shown while everything is in order.
+At the bottom of the card (above the Schedules bar), a chip appears while the heat protection keeps the covers down, and a blinking chip names the covers tonight's close had to leave open (window open). Past three covers the chip shows a count; tap it (or focus it and press Enter) to read the names. A calm, non-blinking chip names the paused covers; tap it to open the pause row. Nothing is shown while everything is in order.
+
+### Schedules
+
+![Schedules panel](assets/schedules_preview.png)
+
+With the [Scheduler](https://github.com/nielsfaber/scheduler-component) integration, a **Schedules** bar at the foot of the card names the current day mode. Tap it to slide a panel up over the card. It has one tab per day mode (a dot marks the current one, shown on opening and whenever the mode changes) and the 24 h timelines of the schedules tagged with the tab's mode, grouped by room with the temperature it measures, heating first, then cooling. A vertical line marks the current time; a disabled schedule stays readable, hatched. The switch of each row enables or disables the schedule, and turning a room's cooling on turns its heating off (and the other way round). The pencil next to the tabs shows the [scheduler-card](https://github.com/nielsfaber/scheduler-card) list of the tab instead, with **Add** and the full editor, filtered on its mode and on `schedule_entities`; press it again to come back to the timelines. Tap the bar again, or press Escape, to fold the panel back.
+
+The panel is as tall as its content and anchored to the foot of the card, so the top of the card stays in sight; when the schedules are taller than the card, they scroll inside the panel. The card keeps its height, so the dashboard does not move.
+
+Tag each schedule with the name of its day mode (in the scheduler-card editor, **Options → Tags**). The bar only appears once a schedule carries such a tag; without the Scheduler integration the card looks as before.
 
 ---
 
 ## Requirements
 
 This card requires the [HomeShift integration](https://github.com/Gamso/homeshift) to be installed and configured. The card reads directly from the entities exposed by the integration.
+
+The schedules panel is optional and needs:
+
+- [scheduler-component](https://github.com/nielsfaber/scheduler-component) (the Scheduler integration), for the timelines
+- [scheduler-card](https://github.com/nielsfaber/scheduler-card), for the pencil that adds and edits schedules
 
 ---
 
@@ -115,6 +130,11 @@ open_covers_entity: button.homeshift_open_covers
 close_covers_entity: button.homeshift_close_covers
 covers_left_open_entity: binary_sensor.homeshift_covers_left_open
 covers_inhibited_entity: sensor.homeshift_covers_inhibited
+# Schedules panel (optional)
+show_schedules: true
+schedule_entities:
+  - climate.living_room
+  - climate.bedroom
 ```
 
 Every entity option defaults to the entity the HomeShift integration creates, so a plain `type: custom:homeshift-card` works with a default installation. Set an option to an empty string to hide the corresponding element. If the day mode or thermostat mode entity does not exist, the card shows an "Entity not found" message instead of the controls.
@@ -138,8 +158,12 @@ Every entity option defaults to the entity the HomeShift integration creates, so
 | `cover_entity`             | string  | _(none)_                                   | Legacy: cover opened/closed by the times; overrides the two buttons when set |
 | `covers_left_open_entity`  | string  | `binary_sensor.homeshift_covers_left_open` | "Not closed" chip                                                            |
 | `covers_inhibited_entity`  | string  | `sensor.homeshift_covers_inhibited`        | Cover automation pause row and "Paused" chip                                 |
+| `show_schedules`           | boolean | `true`                                     | Schedules panel; `false` hides it                                            |
+| `schedule_entities`        | list    | _(all)_                                    | Schedules panel: only the schedules acting on these entities                 |
 
 All options can also be set from the visual editor.
+
+---
 
 ## Development
 
@@ -152,6 +176,8 @@ npm test
 ```
 
 CI runs the same commands, checks that the committed `dist/` matches a fresh build, and validates the repository with the HACS action.
+
+The devcontainer (`.devcontainer/`, VS Code → **Dev Containers: Reopen in Container**) runs a Home Assistant with the HomeShift entities simulated, the Scheduler integration, sample schedules and a **HomeShift** dashboard, at http://localhost:8123 (login `admin` / `admin`). See [.devcontainer/README.md](.devcontainer/README.md).
 
 ---
 
