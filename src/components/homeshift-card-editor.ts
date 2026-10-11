@@ -35,6 +35,17 @@ class HomeShiftCardEditor extends LitElement {
     this._dispatchConfigChanged(newConfig);
   }
 
+  /** Schedules options: `show_schedules` and `schedule_entities`. */
+  private _onScheduleChanged(
+    ev: CustomEvent,
+    key: "show_schedules" | "schedule_entities",
+  ) {
+    if (!this._config || !this.hass) return;
+    const newConfig = { ...this._config, [key]: ev.detail.value };
+    this._config = newConfig;
+    this._dispatchConfigChanged(newConfig);
+  }
+
   private _dispatchConfigChanged(newConfig: HomeShiftCardConfig) {
     const event = new CustomEvent("config-changed", {
       detail: { config: newConfig },
@@ -68,6 +79,23 @@ class HomeShiftCardEditor extends LitElement {
             allow-custom-entity
           ></ha-entity-picker>`,
         )}
+
+        <ha-selector
+          .hass=${this.hass}
+          .label=${localize(this.hass, "editor.show_schedules")}
+          .selector=${{ boolean: {} }}
+          .value=${this._config.show_schedules !== false}
+          @value-changed=${(e: CustomEvent) =>
+            this._onScheduleChanged(e, "show_schedules")}
+        ></ha-selector>
+        <ha-selector
+          .hass=${this.hass}
+          .label=${localize(this.hass, "editor.schedule_entities")}
+          .selector=${{ entity: { multiple: true } }}
+          .value=${this._config.schedule_entities ?? []}
+          @value-changed=${(e: CustomEvent) =>
+            this._onScheduleChanged(e, "schedule_entities")}
+        ></ha-selector>
       </div>
     `;
   }
@@ -81,7 +109,8 @@ class HomeShiftCardEditor extends LitElement {
     }
 
     ha-textfield,
-    ha-entity-picker {
+    ha-entity-picker,
+    ha-selector {
       width: 100%;
     }
   `;

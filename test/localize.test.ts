@@ -50,17 +50,21 @@ describe("localize", () => {
 
   it("has no key the sources never use", () => {
     // Vitest runs from the repository root.
-    const dir = join(process.cwd(), "src/components");
-    const source = readdirSync(dir)
-      .map((f) => readFileSync(join(dir, f), "utf-8"))
+    const source = ["src/components", "src/schedule"]
+      .map((sub) => join(process.cwd(), sub))
+      .flatMap((dir) =>
+        readdirSync(dir).map((f) => readFileSync(join(dir, f), "utf-8")),
+      )
       .join("\n");
     // Keys built at runtime: `thermostat.${key}`, `preview.${key}`,
-    // `editor.${field.key}` and `card.cover_${action}_...`.
+    // `editor.${field.key}`, `card.cover_${action}_...` and
+    // `schedule.${value.kind}`.
     const dynamic = [
       /^thermostat\./,
       /^preview\./,
       /^editor\./,
       /^card\.cover_(open|close)_(time|action|failed)$/,
+      /^schedule\.(on|off)$/,
     ];
     const unused = leafKeys(en).filter(
       (key) =>

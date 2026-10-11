@@ -19,6 +19,13 @@ export interface HomeShiftCardConfig {
   covers_left_open_entity?: string;
   /** HomeShift's covers_inhibited sensor: the cover automation pause row. */
   covers_inhibited_entity?: string;
+  /**
+   * Schedules panel: false hides it. Otherwise it appears on its own once
+   * the Scheduler integration holds schedules tagged with a day mode.
+   */
+  show_schedules?: boolean;
+  /** Only the schedules acting on these entities, in the schedules panel. */
+  schedule_entities?: string[];
 }
 
 export type EntityConfigKey = {

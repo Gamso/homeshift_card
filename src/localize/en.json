@@ -50,6 +50,17 @@
     "cooling": "Cooling",
     "ventilation": "Ventilation"
   },
+  "schedule": {
+    "title": "Schedules",
+    "empty": "No schedule for {mode}",
+    "on": "On",
+    "off": "Off",
+    "edit": "Edit schedules",
+    "back": "Back to timelines",
+    "active_mode": "Current day mode",
+    "next_run": "Next run",
+    "days": "Days"
+  },
   "editor": {
     "name": "Name",
     "day_mode_entity": "Day Mode Entity",
@@ -65,7 +76,9 @@
     "close_covers_entity": "Close Covers Button",
     "cover_entity": "Cover Entity (legacy, overrides the buttons)",
     "covers_left_open_entity": "Covers Left Open Entity",
-    "covers_inhibited_entity": "Paused covers entity"
+    "covers_inhibited_entity": "Paused covers entity",
+    "show_schedules": "Schedules panel (Scheduler integration)",
+    "schedule_entities": "Schedules panel: only these entities (all when empty)"
   },
   "preview": {
     "home": "Home",

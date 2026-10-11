@@ -5,6 +5,8 @@ import "./homeshift-card-editor";
 import { ENTITY_FIELDS, HomeShiftCardConfig } from "../types";
 import { formatMinutes, isUsable, numericState } from "../state";
 import { formatShortDate, formatTime } from "../time";
+import "../schedule/schedule-panel";
+import { Schedule } from "../schedule/timeline";
 
 type CoverAction = "open" | "close";
 type SettingName = "override" | "early" | "covers";
@@ -44,6 +46,12 @@ class HomeShiftCard extends LitElement {
   @state() private _coversExpanded = false;
   /** Bumped at midnight so the "Today" / "Tomorrow" prefixes roll over. */
   @state() private _day = 0;
+  /** Every schedule of the Scheduler integration, once read (schedules panel). */
+  @state() private _schedules?: Schedule[];
+  /** Whether the schedules panel covers the card. */
+  @state() private _schedulesOpen = false;
+  /** Fingerprint of the schedule switches, to read the schedules again when they change. */
+  private _schedulesKey?: string;
   private _midnightTimer?: ReturnType<typeof setTimeout>;
   private _settingTimeout?: ReturnType<typeof setTimeout>;
 
@@ -106,6 +114,10 @@ class HomeShiftCard extends LitElement {
     for (const field of ENTITY_FIELDS) {
       normalized[field.key] = config[field.key] ?? field.default;
     }
+    normalized.show_schedules = config.show_schedules !== false;
+    normalized.schedule_entities = Array.isArray(config.schedule_entities)
+      ? config.schedule_entities
+      : [];
     this._config = normalized;
   }
 
@@ -114,18 +126,24 @@ class HomeShiftCard extends LitElement {
   }
 
   protected shouldUpdate(changedProps: Map<string, unknown>): boolean {
+    // Here rather than in willUpdate: most hass updates stop at this method.
+    if (changedProps.has("hass")) this._refreshSchedules();
     if (changedProps.has("_config") || changedProps.has("preview")) return true;
     if (
       changedProps.has("_day") ||
       changedProps.has("_openSetting") ||
       changedProps.has("_inhibitIndex") ||
       changedProps.has("_coversExpanded") ||
-      changedProps.has("_coverPending")
+      changedProps.has("_coverPending") ||
+      changedProps.has("_schedules") ||
+      changedProps.has("_schedulesOpen")
     )
       return true;
     if (changedProps.has("hass")) {
       const oldHass = changedProps.get("hass") as any;
       if (!oldHass) return true;
+      // The open panel shows the schedule switches and the room temperatures.
+      if (this._schedulesOpen) return true;
       const watchedEntities = ENTITY_FIELDS.map(
         (field) => this._config?.[field.key],
       ).filter(Boolean) as string[];
@@ -374,6 +392,98 @@ class HomeShiftCard extends LitElement {
           </div>`
         : nothing}
     </div>`;
+  }
+
+  /**
+   * Reads the schedules again when a schedule switch changes: the Scheduler
+   * integration updates them whenever a schedule is edited, toggled or run.
+   * Without the integration the call fails and the panel stays hidden.
+   */
+  private _refreshSchedules() {
+    if (!this._config?.show_schedules || this.preview || !this.hass?.callWS) {
+      return;
+    }
+    const key = Object.values(this.hass.states ?? {})
+      .filter((s: any) => s.entity_id.startsWith("switch.schedule"))
+      .map((s: any) => `${s.entity_id}:${s.last_updated}`)
+      .join("|");
+    if (key === this._schedulesKey) return;
+    this._schedulesKey = key;
+    this.hass
+      .callWS({ type: "scheduler" })
+      .then((schedules: Schedule[]) => {
+        this._schedules = Array.isArray(schedules) ? schedules : undefined;
+      })
+      .catch(() => {
+        this._schedules = undefined;
+      });
+  }
+
+  /** Whether a schedule is tagged with one of the day modes. */
+  private _hasDaySchedules(dayModes: string[]): boolean {
+    return (this._schedules ?? []).some((schedule) =>
+      schedule.tags?.some((tag) => dayModes.includes(tag)),
+    );
+  }
+
+  private _toggleSchedules(open: boolean) {
+    this._schedulesOpen = open;
+    // Keep the focus on the control that opens or closes the panel.
+    this.updateComplete.then(() =>
+      this.shadowRoot
+        ?.querySelector<HTMLElement>(open ? ".schedules-close" : ".schedules-open")
+        ?.focus(),
+    );
+  }
+
+  /**
+   * Bar at the foot of the card, and the panel it slides up over the card:
+   * a tab per day mode with the 24 h timelines of its schedules, and the
+   * scheduler card to edit them. The card keeps its height, so the
+   * dashboard around it does not move.
+   */
+  private _renderSchedules(dayMode: string, dayModes: string[]) {
+    const title = localize(this.hass, "schedule.title");
+    const bar = (open: boolean) => html`<button
+      type="button"
+      class="schedules-bar ${open ? "schedules-close" : "schedules-open"}"
+      aria-expanded=${open ? "true" : "false"}
+      aria-controls="schedules-panel"
+      @click=${() => this._toggleSchedules(!open)}
+    >
+      <ha-icon icon="mdi:calendar-clock"></ha-icon>
+      <span class="schedules-title">${title}</span>
+      <span class="schedules-mode">${dayMode}</span>
+      <ha-icon
+        class="chevron"
+        icon=${open ? "mdi:chevron-down" : "mdi:chevron-up"}
+      ></ha-icon>
+    </button>`;
+    return html`${bar(false)}
+      ${this._schedulesOpen
+        ? html`<div
+            id="schedules-panel"
+            class="schedules-panel"
+            role="region"
+            aria-label=${title}
+            @keydown=${(ev: KeyboardEvent) => {
+              if (ev.key !== "Escape") return;
+              ev.stopPropagation();
+              this._toggleSchedules(false);
+            }}
+          >
+            ${bar(true)}
+            <div class="schedules-body">
+              <homeshift-schedule-panel
+                .hass=${this.hass}
+                .schedules=${this._schedules ?? []}
+                .modes=${dayModes}
+                .activeMode=${dayMode}
+                .entities=${this._config.schedule_entities ?? []}
+              ></homeshift-schedule-panel>
+            </div>
+          </div>`
+        : nothing}`;
   }
 
   private onSelect(entityId: string, ev: Event) {
@@ -938,9 +1048,12 @@ class HomeShiftCard extends LitElement {
       this._config.cover_close_time_entity,
     )?.state;
 
+    const dayModes: string[] = day.attributes?.options ?? [];
+    const showSchedules = isUsable(day) && this._hasDaySchedules(dayModes);
+
     return html`
       <ha-card>
-        <div class="container">
+        <div class="container" ?inert=${showSchedules && this._schedulesOpen}>
           ${this._renderMain(
             thermo,
             day,
@@ -951,6 +1064,7 @@ class HomeShiftCard extends LitElement {
             coverCloseTime,
           )}
         </div>
+        ${showSchedules ? this._renderSchedules(day.state, dayModes) : nothing}
       </ha-card>
     `;
   }
@@ -959,6 +1073,8 @@ class HomeShiftCard extends LitElement {
     ha-card {
       padding: 12px;
       position: relative;
+      /* Clips the schedules panel while it slides up. */
+      overflow: hidden;
     }
 
     .container {
@@ -978,7 +1094,8 @@ class HomeShiftCard extends LitElement {
       border: 1px solid var(--divider-color, #ccc);
       border-radius: 8px;
       overflow: hidden;
-      margin-bottom: 4px;
+      /* Same gap above the first divider as the card's padding above. */
+      margin-bottom: 12px;
     }
 
     .preset {
@@ -1385,6 +1502,103 @@ class HomeShiftCard extends LitElement {
       to {
         opacity: 1;
         transform: translateY(0);
+      }
+    }
+
+    /* Schedules: a bar at the foot of the card, and the panel it slides up. */
+    .schedules-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: calc(100% + 24px);
+      margin: 10px -12px -12px;
+      padding: 10px 12px;
+      border: 0;
+      border-top: 1px solid var(--divider-color, #e0e0e0);
+      background: transparent;
+      color: var(--secondary-text-color, #666);
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 500;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .schedules-bar:hover {
+      background: var(--secondary-background-color, rgba(127, 127, 127, 0.08));
+    }
+
+    .schedules-bar:focus-visible {
+      outline: 2px solid var(--primary-color);
+      outline-offset: -2px;
+    }
+
+    .schedules-bar ha-icon {
+      --mdc-icon-size: 18px;
+      flex-shrink: 0;
+    }
+
+    .schedules-title {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .schedules-mode {
+      color: var(--primary-text-color);
+      text-transform: none;
+      letter-spacing: normal;
+    }
+
+    /* Anchored to the foot of the card and as tall as its content: the top
+       of the card stays in sight while the schedules are shorter than it;
+       longer ones scroll inside the panel. */
+    .schedules-panel {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      max-height: 100%;
+      z-index: 1;
+      border-top: 1px solid var(--divider-color, #e0e0e0);
+      box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.25);
+      display: flex;
+      flex-direction: column;
+      background: var(--ha-card-background, var(--card-background-color, #fff));
+      animation: schedules-slide-up 0.2s ease;
+    }
+
+    .schedules-panel .schedules-bar {
+      width: 100%;
+      margin: 0;
+      border-top: 0;
+      border-bottom: 1px solid var(--divider-color, #e0e0e0);
+    }
+
+    .schedules-body {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      padding: 10px 12px 12px;
+    }
+
+    @keyframes schedules-slide-up {
+      from {
+        transform: translateY(100%);
+      }
+      to {
+        transform: translateY(0);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .schedules-panel {
+        animation: none;
       }
     }
 

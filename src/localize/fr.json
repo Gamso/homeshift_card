@@ -50,6 +50,17 @@
     "cooling": "Climatisation",
     "ventilation": "Ventilation"
   },
+  "schedule": {
+    "title": "Plannings",
+    "empty": "Aucune planification pour {mode}",
+    "on": "Allumé",
+    "off": "Éteint",
+    "edit": "Modifier les planifications",
+    "back": "Retour aux frises",
+    "active_mode": "Mode du jour actuel",
+    "next_run": "Prochain lancement",
+    "days": "Jours"
+  },
   "editor": {
     "name": "Nom",
     "day_mode_entity": "Entité mode jour",
@@ -65,7 +76,9 @@
     "close_covers_entity": "Bouton de fermeture des volets",
     "cover_entity": "Entité volet (ancienne option, prioritaire sur les boutons)",
     "covers_left_open_entity": "Entité volets non fermés",
-    "covers_inhibited_entity": "Entité volets en pause"
+    "covers_inhibited_entity": "Entité volets en pause",
+    "show_schedules": "Panneau des plannings (intégration Scheduler)",
+    "schedule_entities": "Panneau des plannings : seulement ces entités (toutes si vide)"
   },
   "preview": {
     "home": "Maison",
