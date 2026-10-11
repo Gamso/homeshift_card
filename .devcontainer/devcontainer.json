@@ -1,5 +1,5 @@
 {
-  "name": "Home Assistant Dev Environment",
+  "name": "HomeShift Card - Home Assistant",
   "build": {
     "dockerfile": "Dockerfile"
   },
@@ -13,7 +13,14 @@
       "onAutoForward": "notify"
     }
   },
+  // Home Assistant est le processus principal du conteneur (CMD du Dockerfile : start.sh) ;
+  // VS Code ne doit pas le remplacer par sa boucle "sleep".
+  "overrideCommand": false,
+  // Installe les dépendances et prépare /config ; start.sh attend la fin de ce script.
   "postCreateCommand": "bash /workspaces/homeshift_card/.devcontainer/setup.sh",
+  // Chemin fixe dans le conteneur, quel que soit le nom du dossier sur la machine.
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/homeshift_card,type=bind",
+  "workspaceFolder": "/workspaces/homeshift_card",
   "mounts": [
     "source=${localWorkspaceFolder}/.devcontainer/config,target=/config,type=bind",
     "source=${localWorkspaceFolder}/dist,target=/config/www/homeshift_card,type=bind"

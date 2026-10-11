@@ -1,0 +1,56 @@
+# Seed of the "HomeShift" dashboard (storage mode, editable in the UI).
+# setup.sh copies it into .storage/lovelace.dashboard_homeshift when that file does not exist yet.
+title: HomeShift
+views:
+  - title: HomeShift
+    path: homeshift
+    icon: mdi:home-clock
+    type: sections
+    max_columns: 3
+    sections:
+      - type: grid
+        cards:
+          - type: heading
+            heading: Carte
+            icon: mdi:home-clock
+          # Every entity option defaults to the simulated HomeShift entities.
+          - type: custom:homeshift-card
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Simulation
+            icon: mdi:tune
+          - type: entities
+            entities:
+              - entity: select.homeshift_day_mode
+                name: Mode du jour
+              - entity: select.homeshift_thermostat_mode
+                name: Mode thermostat
+              - number.homeshift_override_duration
+              - number.homeshift_early_switch
+              - input_text.homeshift_next_mode_backing
+              - input_boolean.homeshift_heat_protection_backing
+              - input_boolean.homeshift_window_chambre_backing
+              - input_boolean.homeshift_window_salon_backing
+              - input_number.temperature_bureau_backing
+              - input_number.temperature_chambre_backing
+              - input_number.temperature_salon_backing
+          - type: thermostat
+            entity: climate.salon
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Planifications
+            icon: mdi:calendar-clock
+          # Edits the schedules shown in the card's schedules panel.
+          - type: custom:scheduler-card
+            title: false
+            discover_existing: false
+            include:
+              - climate.bureau
+              - climate.chambre
+              - climate.salon
+              - switch.salon_enable_auto_start_stop
+              - input_boolean.force_presence
