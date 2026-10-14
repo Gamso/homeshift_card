@@ -1,12 +1,11 @@
-FROM ghcr.io/home-assistant/home-assistant:latest
+FROM ghcr.io/home-assistant/home-assistant:stable
 
-# Install Node.js and npm
-RUN apk add --no-cache nodejs npm
+# Node.js to build the card, wget/unzip to fetch the scheduler component and card
+RUN apk add --no-cache nodejs npm wget unzip
 
-# Install additional tools if needed
-# RUN apk add --no-cache bash
+# Home Assistant is run by start.sh, not by the image's s6 init: it waits for
+# the seeds of setup.sh (scheduler config entry, schedules, dashboard) to be in place.
+ENTRYPOINT []
+CMD ["bash", "/workspaces/homeshift_card/.devcontainer/start.sh"]
 
-# The Home Assistant image already has an entrypoint that starts Home Assistant
-# We'll let it run in the background
-
-WORKDIR /workspaces/homershift_card
+WORKDIR /workspaces/homeshift_card

@@ -18,11 +18,23 @@ function resolveKey(obj: Dict, path: string): any {
   return path.split('.').reduce((acc: any, k: string) => (acc && acc[k] != null ? acc[k] : undefined), obj);
 }
 
-export function localize(hass: any, key: string, params?: Record<string, string>): string {
+/**
+ * Translates `key` into the Home Assistant user's language.
+ *
+ * Lookup order: user's language, then English, then `fallback`, then the
+ * key itself (so a missing translation stays visible during development).
+ */
+export function localize(
+  hass: any,
+  key: string,
+  params?: Record<string, string>,
+  fallback?: string,
+): string {
   const lang = get(hass);
-  const dict = languages[lang] || languages.en;
-  let text = resolveKey(dict, key) as string | undefined;
-  if (!text) return key;
+  let text = (resolveKey(languages[lang], key) ??
+    resolveKey(languages.en, key) ??
+    fallback) as string | undefined;
+  if (text == null) return key;
   if (params) {
     Object.entries(params).forEach(([k, v]) => (text = (text as string).replace(`{${k}}`, v)));
   }

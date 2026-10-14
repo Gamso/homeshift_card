@@ -1,17 +1,7 @@
 import { LitElement, html, css } from "lit";
 import { property, state } from "lit/decorators.js";
 import { localize } from "../localize/localize";
-
-interface HomeShiftCardConfig {
-  name?: string;
-  day_mode_entity?: string;
-  hermostat_mode_tentity?: string;
-  cover_open_time_entity?: string;
-  cover_close_time_entity?: string;
-  cover_entity?: string;
-  covers_left_open_entity?: string;
-  show_title?: boolean;
-}
+import { ENTITY_FIELDS, EntityConfigKey, HomeShiftCardConfig } from "../types";
 
 class HomeShiftCardEditor extends LitElement {
   @property({ attribute: false }) public hass!: any;
@@ -34,24 +24,24 @@ class HomeShiftCardEditor extends LitElement {
 
   private _onEntityChanged(
     ev: CustomEvent,
-    fieldName: keyof HomeShiftCardConfig,
+    fieldName: EntityConfigKey,
   ) {
     if (!this._config || !this.hass) return;
     const newValue = ev.detail.value;
-    if ((this._config as any)[fieldName] === newValue) return;
+    if (this._config[fieldName] === newValue) return;
 
     const newConfig = { ...this._config, [fieldName]: newValue };
     this._config = newConfig;
     this._dispatchConfigChanged(newConfig);
   }
 
-  private _onShowTitleChanged(ev: Event) {
+  /** Schedules options: `show_schedules` and `schedule_entities`. */
+  private _onScheduleChanged(
+    ev: CustomEvent,
+    key: "show_schedules" | "schedule_entities",
+  ) {
     if (!this._config || !this.hass) return;
-    const target = ev.target as any;
-    const newValue = target.checked;
-    if (this._config.show_title === newValue) return;
-
-    const newConfig = { ...this._config, show_title: newValue };
+    const newConfig = { ...this._config, [key]: ev.detail.value };
     this._config = newConfig;
     this._dispatchConfigChanged(newConfig);
   }
@@ -78,68 +68,34 @@ class HomeShiftCardEditor extends LitElement {
           @input=${this._onNameChanged}
         ></ha-textfield>
 
-        <ha-entity-picker
-          label="${localize(this.hass, "editor.day_mode_entity")}"
-          .hass=${this.hass}
-          .value=${this._config.day_mode_entity || ""}
-          @value-changed=${(e: CustomEvent) =>
-            this._onEntityChanged(e, "day_mode_entity")}
-          allow-custom-entity
-        ></ha-entity-picker>
+        ${ENTITY_FIELDS.map(
+          (field) => html`<ha-entity-picker
+            label="${localize(this.hass, `editor.${field.key}`)}"
+            .hass=${this.hass}
+            .value=${this._config[field.key] || ""}
+            .includeDomains=${field.domains}
+            @value-changed=${(e: CustomEvent) =>
+              this._onEntityChanged(e, field.key)}
+            allow-custom-entity
+          ></ha-entity-picker>`,
+        )}
 
-        <ha-entity-picker
-          label="${localize(this.hass, "editor.hermostat_mode_tentity")}"
+        <ha-selector
           .hass=${this.hass}
-          .value=${this._config.hermostat_mode_tentity || ""}
+          .label=${localize(this.hass, "editor.show_schedules")}
+          .selector=${{ boolean: {} }}
+          .value=${this._config.show_schedules !== false}
           @value-changed=${(e: CustomEvent) =>
-            this._onEntityChanged(e, "hermostat_mode_tentity")}
-          allow-custom-entity
-        ></ha-entity-picker>
-
-        <ha-entity-picker
-          label="${localize(this.hass, "editor.cover_open_time_entity")}"
+            this._onScheduleChanged(e, "show_schedules")}
+        ></ha-selector>
+        <ha-selector
           .hass=${this.hass}
-          .value=${this._config.cover_open_time_entity || ""}
+          .label=${localize(this.hass, "editor.schedule_entities")}
+          .selector=${{ entity: { multiple: true } }}
+          .value=${this._config.schedule_entities ?? []}
           @value-changed=${(e: CustomEvent) =>
-            this._onEntityChanged(e, "cover_open_time_entity")}
-          allow-custom-entity
-        ></ha-entity-picker>
-
-        <ha-entity-picker
-          label="${localize(this.hass, "editor.cover_close_time_entity")}"
-          .hass=${this.hass}
-          .value=${this._config.cover_close_time_entity || ""}
-          @value-changed=${(e: CustomEvent) =>
-            this._onEntityChanged(e, "cover_close_time_entity")}
-          allow-custom-entity
-        ></ha-entity-picker>
-
-        <ha-entity-picker
-          label="${localize(this.hass, "editor.cover_entity")}"
-          .hass=${this.hass}
-          .value=${this._config.cover_entity || ""}
-          .includeDomains=${["cover"]}
-          @value-changed=${(e: CustomEvent) =>
-            this._onEntityChanged(e, "cover_entity")}
-          allow-custom-entity
-        ></ha-entity-picker>
-
-        <ha-entity-picker
-          label="${localize(this.hass, "editor.covers_left_open_entity")}"
-          .hass=${this.hass}
-          .value=${this._config.covers_left_open_entity || ""}
-          .includeDomains=${["binary_sensor"]}
-          @value-changed=${(e: CustomEvent) =>
-            this._onEntityChanged(e, "covers_left_open_entity")}
-          allow-custom-entity
-        ></ha-entity-picker>
-
-        <ha-formfield label="${localize(this.hass, "editor.show_title")}">
-          <ha-switch
-            .checked=${this._config.show_title !== false}
-            @change=${this._onShowTitleChanged}
-          ></ha-switch>
-        </ha-formfield>
+            this._onScheduleChanged(e, "schedule_entities")}
+        ></ha-selector>
       </div>
     `;
   }
@@ -153,14 +109,9 @@ class HomeShiftCardEditor extends LitElement {
     }
 
     ha-textfield,
-    ha-entity-picker {
+    ha-entity-picker,
+    ha-selector {
       width: 100%;
-    }
-
-    ha-formfield {
-      display: flex;
-      align-items: center;
-      padding: 8px 0;
     }
   `;
 }
